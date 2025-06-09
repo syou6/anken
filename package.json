@@ -1,5 +1,5 @@
 {
-  "name": "company-schedule-system",
+  "name": "focusbuddy-calendar",
   "private": true,
   "version": "0.1.0",
   "type": "module",
@@ -11,17 +11,26 @@
   },
   "dependencies": {
     "@headlessui/react": "^1.7.18",
+    "@radix-ui/react-scroll-area": "^1.2.9",
+    "@radix-ui/react-separator": "^1.1.7",
+    "@radix-ui/react-slot": "^1.2.3",
+    "@supabase/supabase-js": "^2.50.0",
+    "@types/xlsx": "^0.0.35",
+    "class-variance-authority": "^0.7.1",
+    "clsx": "^2.1.1",
     "date-fns": "^3.6.0",
     "lucide-react": "^0.344.0",
+    "nodemailer": "^6.9.12",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "react-hook-form": "^7.51.0",
     "react-hot-toast": "^2.4.1",
     "react-router-dom": "^6.22.3",
-    "zustand": "^4.5.2",
-    "xlsx": "^0.18.5",
+    "tailwind-merge": "^3.3.0",
+    "tailwindcss-animate": "^1.0.7",
     "web-push": "^3.6.7",
-    "nodemailer": "^6.9.12"
+    "xlsx": "^0.18.5",
+    "zustand": "^4.5.2"
   },
   "devDependencies": {
     "@eslint/js": "^9.9.1",

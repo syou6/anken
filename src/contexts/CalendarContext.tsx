@@ -2,6 +2,8 @@ import { createContext, useContext, useState, ReactNode, useCallback, useEffect 
 import { addDays, subDays, startOfWeek, endOfWeek, isSameDay, isWithinInterval } from 'date-fns';
 import { Schedule, User } from '../types';
 import { mockSchedules } from '../data/mockData';
+import { supabase } from '../lib/supabase';
+import { notificationService } from '../services/notificationService';
 import toast from 'react-hot-toast';
 
 interface CalendarContextType {
@@ -23,6 +25,7 @@ interface CalendarContextType {
   getSchedulesForUser: (userId: string) => Schedule[];
   getSchedulesForEquipment: (equipmentId: string, type: 'room' | 'vehicle' | 'sample') => Schedule[];
   checkScheduleConflicts: (startTime: Date, endTime: Date, participants: string[], equipment: { id: string, type: string }[]) => { hasConflicts: boolean, conflicts: Schedule[] };
+  refreshSchedules: () => Promise<void>;
 }
 
 const CalendarContext = createContext<CalendarContextType | undefined>(undefined);
@@ -30,28 +33,62 @@ const CalendarContext = createContext<CalendarContextType | undefined>(undefined
 export function CalendarProvider({ children }: { children: ReactNode }) {
   const [currentDate, setCurrentDate] = useState<Date>(new Date());
   const [view, setView] = useState<'day' | 'week' | 'month'>('week');
-  const [schedules, setSchedules] = useState<Schedule[]>(() => {
-    const savedSchedules = localStorage.getItem('schedules');
-    if (savedSchedules) {
-      const parsed = JSON.parse(savedSchedules);
-      return parsed.map((schedule: any) => ({
-        ...schedule,
-        startTime: new Date(schedule.startTime),
-        endTime: new Date(schedule.endTime),
-        createdAt: new Date(schedule.createdAt),
-        updatedAt: schedule.updatedAt ? new Date(schedule.updatedAt) : null
-      }));
-    }
-    return mockSchedules;
-  });
+  const [schedules, setSchedules] = useState<Schedule[]>([]);
   const [visibleUsers, setVisibleUsers] = useState<string[]>(() => {
     const saved = localStorage.getItem('visibleUsers');
     return saved ? JSON.parse(saved) : [];
   });
 
+  // Supabaseからスケジュールを読み込む
+  const fetchSchedules = useCallback(async () => {
+    try {
+      const { data, error } = await supabase
+        .from('schedules')
+        .select('*')
+        .order('start_time');
+
+      if (error) {
+        console.error('Failed to fetch schedules from Supabase:', error);
+        // エラーの場合はモックデータを使用
+        console.warn('Using mock data for schedules');
+        setSchedules(mockSchedules);
+      } else if (data) {
+        const convertedSchedules: Schedule[] = data.map(schedule => ({
+          id: schedule.id,
+          type: schedule.type,
+          title: schedule.title,
+          details: schedule.details || '',
+          startTime: new Date(schedule.start_time),
+          endTime: new Date(schedule.end_time),
+          isAllDay: schedule.is_all_day,
+          recurrence: schedule.recurrence,
+          participants: schedule.participants || [],
+          equipment: schedule.equipment || [],
+          reminders: schedule.reminders || [],
+          meetLink: schedule.meet_link,
+          meetingType: schedule.meeting_type || 'in-person',
+          createdBy: schedule.created_by,
+          createdAt: new Date(schedule.created_at),
+          updatedBy: schedule.updated_by,
+          updatedAt: schedule.updated_at ? new Date(schedule.updated_at) : null
+        }));
+        setSchedules(convertedSchedules);
+      }
+    } catch (err) {
+      console.error('Error fetching schedules:', err);
+      console.warn('Using mock data for schedules');
+      setSchedules(mockSchedules);
+    }
+  }, []);
+
   useEffect(() => {
-    localStorage.setItem('schedules', JSON.stringify(schedules));
-  }, [schedules]);
+    fetchSchedules();
+  }, [fetchSchedules]);
+
+  // LocalStorage保存を無効化
+  // useEffect(() => {
+  //   localStorage.setItem('schedules', JSON.stringify(schedules));
+  // }, [schedules]);
 
   useEffect(() => {
     localStorage.setItem('visibleUsers', JSON.stringify(visibleUsers));
@@ -187,40 +224,295 @@ export function CalendarProvider({ children }: { children: ReactNode }) {
       if (!proceed) return false;
     }
 
-    const newSchedule: Schedule = {
-      ...scheduleData,
-      id: Date.now().toString(),
-      createdAt: new Date(),
-      updatedAt: null,
-      updatedBy: null,
-    };
-
-    setSchedules(current => [...current, newSchedule]);
-
     try {
-      await sendEmailNotifications(newSchedule);
-      await sendPushNotifications(newSchedule);
+      // データ検証
+      console.log('Schedule data before saving:', {
+        type: scheduleData.type,
+        title: scheduleData.title,
+        startTime: scheduleData.startTime,
+        endTime: scheduleData.endTime,
+        participants: scheduleData.participants,
+        createdBy: scheduleData.createdBy
+      });
+
+      if (!scheduleData.type || !scheduleData.title || !scheduleData.startTime || !scheduleData.endTime) {
+        console.error('Required fields missing:', { 
+          type: scheduleData.type, 
+          title: scheduleData.title, 
+          startTime: scheduleData.startTime, 
+          endTime: scheduleData.endTime 
+        });
+        toast.error('必須フィールドが不足しています');
+        return false;
+      }
+
+      // Supabaseにデータを保存
+      const { data, error } = await supabase
+        .from('schedules')
+        .insert([{
+          type: scheduleData.type,
+          title: scheduleData.title,
+          details: scheduleData.details || null,
+          start_time: scheduleData.startTime.toISOString(),
+          end_time: scheduleData.endTime.toISOString(),
+          is_all_day: scheduleData.isAllDay || false,
+          recurrence: scheduleData.recurrence || null,
+          participants: scheduleData.participants || [],
+          equipment: scheduleData.equipment || [],
+          reminders: scheduleData.reminders || [],
+          meet_link: scheduleData.meetLink || null,
+          meeting_type: scheduleData.meetingType || 'in-person',
+          created_by: scheduleData.createdBy || null,
+        }])
+        .select()
+        .single();
+
+      if (error) {
+        console.error('Supabase error details:', error);
+        console.error('Error code:', error.code);
+        console.error('Error message:', error.message);
+        console.error('Error details:', error.details);
+        toast.error(`予約の保存に失敗しました: ${error.message}`);
+        return false;
+      }
+
+      const newSchedule: Schedule = {
+        id: data.id,
+        type: data.type,
+        title: data.title,
+        details: data.details || '',
+        startTime: new Date(data.start_time),
+        endTime: new Date(data.end_time),
+        isAllDay: data.is_all_day,
+        recurrence: data.recurrence,
+        participants: data.participants || [],
+        equipment: data.equipment || [],
+        reminders: data.reminders || [],
+        meetLink: data.meet_link,
+        meetingType: data.meeting_type || 'in-person',
+        createdBy: data.created_by,
+        createdAt: new Date(data.created_at),
+        updatedBy: data.updated_by,
+        updatedAt: data.updated_at ? new Date(data.updated_at) : null
+      };
+
+      setSchedules(current => [...current, newSchedule]);
+      toast.success('予約を作成しました');
+
+      // Send notifications to all participants
+      try {
+        const participantPromises = newSchedule.participants.map(async (participantId) => {
+          // Get participant details
+          const { data: userData } = await supabase
+            .from('users')
+            .select('id, name, email')
+            .eq('id', participantId)
+            .single();
+
+          if (userData) {
+            await notificationService.notifyScheduleCreated({
+              schedule: {
+                id: newSchedule.id,
+                title: newSchedule.title,
+                type: newSchedule.type,
+                startTime: newSchedule.startTime,
+                endTime: newSchedule.endTime,
+                details: newSchedule.details,
+                meetLink: newSchedule.meetLink,
+                participants: newSchedule.participants,
+                location: getLocationFromEquipment(newSchedule.equipment)
+              },
+              user: {
+                id: userData.id,
+                name: userData.name,
+                email: userData.email
+              }
+            });
+          }
+        });
+
+        await Promise.all(participantPromises);
+      } catch (error) {
+        console.error('Notification error:', error);
+      }
+
       return true;
     } catch (error) {
-      console.error('Notification error:', error);
-      return true;
+      console.error('Error creating schedule:', error);
+      toast.error('予約の作成中にエラーが発生しました');
+      return false;
     }
   }, [schedules, getSchedulesForDate, checkScheduleConflicts]);
 
-  const updateSchedule = useCallback((updatedSchedule: Schedule) => {
-    setSchedules(current => 
-      current.map(schedule => 
-        schedule.id === updatedSchedule.id ? {
-          ...updatedSchedule,
-          updatedAt: new Date()
-        } : schedule
-      )
-    );
-  }, []);
+  const updateSchedule = useCallback(async (updatedSchedule: Schedule) => {
+    try {
+      // Get the original schedule for comparison
+      const originalSchedule = schedules.find(s => s.id === updatedSchedule.id);
+      if (!originalSchedule) return;
 
-  const deleteSchedule = useCallback((scheduleId: string) => {
-    setSchedules(current => current.filter(schedule => schedule.id !== scheduleId));
-  }, []);
+      // Update in Supabase
+      const { error } = await supabase
+        .from('schedules')
+        .update({
+          type: updatedSchedule.type,
+          title: updatedSchedule.title,
+          details: updatedSchedule.details || null,
+          start_time: updatedSchedule.startTime.toISOString(),
+          end_time: updatedSchedule.endTime.toISOString(),
+          is_all_day: updatedSchedule.isAllDay || false,
+          recurrence: updatedSchedule.recurrence || null,
+          participants: updatedSchedule.participants || [],
+          equipment: updatedSchedule.equipment || [],
+          reminders: updatedSchedule.reminders || [],
+          meet_link: updatedSchedule.meetLink || null,
+          meeting_type: updatedSchedule.meetingType || 'in-person',
+          updated_by: updatedSchedule.updatedBy || null,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', updatedSchedule.id);
+
+      if (error) {
+        console.error('Error updating schedule:', error);
+        toast.error('予約の更新に失敗しました');
+        return;
+      }
+
+      setSchedules(current => 
+        current.map(schedule => 
+          schedule.id === updatedSchedule.id ? {
+            ...updatedSchedule,
+            updatedAt: new Date()
+          } : schedule
+        )
+      );
+      toast.success('予約を更新しました');
+
+      // Send update notifications
+      try {
+        // Detect changes
+        const changes: string[] = [];
+        if (originalSchedule.title !== updatedSchedule.title) {
+          changes.push(`タイトル: ${originalSchedule.title} → ${updatedSchedule.title}`);
+        }
+        if (originalSchedule.startTime.getTime() !== updatedSchedule.startTime.getTime() ||
+            originalSchedule.endTime.getTime() !== updatedSchedule.endTime.getTime()) {
+          changes.push('日時が変更されました');
+        }
+        if (originalSchedule.meetLink !== updatedSchedule.meetLink) {
+          changes.push('オンライン会議のリンクが変更されました');
+        }
+
+        // Notify all participants (including new ones)
+        const allParticipants = new Set([...originalSchedule.participants, ...updatedSchedule.participants]);
+        const participantPromises = Array.from(allParticipants).map(async (participantId) => {
+          const { data: userData } = await supabase
+            .from('users')
+            .select('id, name, email')
+            .eq('id', participantId)
+            .single();
+
+          if (userData) {
+            await notificationService.notifyScheduleUpdated({
+              schedule: {
+                id: updatedSchedule.id,
+                title: updatedSchedule.title,
+                type: updatedSchedule.type,
+                startTime: updatedSchedule.startTime,
+                endTime: updatedSchedule.endTime,
+                details: updatedSchedule.details,
+                meetLink: updatedSchedule.meetLink,
+                participants: updatedSchedule.participants,
+                location: getLocationFromEquipment(updatedSchedule.equipment)
+              },
+              user: {
+                id: userData.id,
+                name: userData.name,
+                email: userData.email
+              },
+              changes
+            });
+          }
+        });
+
+        await Promise.all(participantPromises);
+      } catch (error) {
+        console.error('Notification error:', error);
+      }
+    } catch (error) {
+      console.error('Error updating schedule:', error);
+      toast.error('予約の更新中にエラーが発生しました');
+    }
+  }, [schedules]);
+
+  const deleteSchedule = useCallback(async (scheduleId: string, deletedBy?: string, reason?: string) => {
+    try {
+      // Get the schedule to be deleted
+      const scheduleToDelete = schedules.find(s => s.id === scheduleId);
+      if (!scheduleToDelete) return;
+
+      // Delete from Supabase
+      const { error } = await supabase
+        .from('schedules')
+        .delete()
+        .eq('id', scheduleId);
+
+      if (error) {
+        console.error('Error deleting schedule:', error);
+        toast.error('予約の削除に失敗しました');
+        return;
+      }
+
+      setSchedules(current => current.filter(schedule => schedule.id !== scheduleId));
+      toast.success('予約を削除しました');
+
+      // Send deletion notifications
+      try {
+        const participantPromises = scheduleToDelete.participants.map(async (participantId) => {
+          const { data: userData } = await supabase
+            .from('users')
+            .select('id, name, email')
+            .eq('id', participantId)
+            .single();
+
+          if (userData) {
+            const { data: deletedByUser } = deletedBy ? await supabase
+              .from('users')
+              .select('name')
+              .eq('id', deletedBy)
+              .single() : { data: null };
+
+            await notificationService.notifyScheduleDeleted({
+              schedule: {
+                id: scheduleToDelete.id,
+                title: scheduleToDelete.title,
+                type: scheduleToDelete.type,
+                startTime: scheduleToDelete.startTime,
+                endTime: scheduleToDelete.endTime,
+                details: scheduleToDelete.details,
+                meetLink: scheduleToDelete.meetLink,
+                participants: scheduleToDelete.participants,
+                location: getLocationFromEquipment(scheduleToDelete.equipment)
+              },
+              user: {
+                id: userData.id,
+                name: userData.name,
+                email: userData.email
+              },
+              deletedBy: deletedByUser?.name,
+              reason
+            });
+          }
+        });
+
+        await Promise.all(participantPromises);
+      } catch (error) {
+        console.error('Notification error:', error);
+      }
+    } catch (error) {
+      console.error('Error deleting schedule:', error);
+      toast.error('予約の削除中にエラーが発生しました');
+    }
+  }, [schedules]);
 
   const getSchedulesForUser = useCallback((userId: string): Schedule[] => {
     return schedules.filter(schedule => 
@@ -255,18 +547,23 @@ export function CalendarProvider({ children }: { children: ReactNode }) {
       getSchedulesForUser,
       getSchedulesForEquipment,
       checkScheduleConflicts,
+      refreshSchedules: fetchSchedules,
     }}>
       {children}
     </CalendarContext.Provider>
   );
 }
 
-async function sendEmailNotifications(schedule: Schedule) {
-  console.log('Sending email notifications for schedule:', schedule);
-}
-
-async function sendPushNotifications(schedule: Schedule) {
-  console.log('Sending push notifications for schedule:', schedule);
+// Helper function to get location from equipment
+function getLocationFromEquipment(equipment: any[]): string | undefined {
+  if (!equipment || equipment.length === 0) return undefined;
+  
+  const rooms = equipment.filter(e => e.type === 'room');
+  if (rooms.length > 0) {
+    return rooms.map(r => r.name).join(', ');
+  }
+  
+  return undefined;
 }
 
 export function useCalendar() {

@@ -1,52 +1,151 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { User, Department, UserRole } from '../../types';
 import { mockUsers } from '../../data/mockData';
 import { Plus, Pencil, Trash2, UserPlus, X } from 'lucide-react';
+import { supabase } from '../../lib/supabase';
+import toast from 'react-hot-toast';
 
 export default function AdminUsers() {
-  const [users, setUsers] = useState<User[]>(() => {
-    const savedUsers = localStorage.getItem('users');
-    return savedUsers ? JSON.parse(savedUsers) : mockUsers;
-  });
+  const [users, setUsers] = useState<User[]>([]);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingUser, setEditingUser] = useState<User | null>(null);
   const [formData, setFormData] = useState<Partial<User>>({});
+  const [loading, setLoading] = useState(true);
 
-  const saveUsers = (newUsers: User[]) => {
-    setUsers(newUsers);
-    localStorage.setItem('users', JSON.stringify(newUsers));
+  // Load users from Supabase
+  useEffect(() => {
+    fetchUsers();
+  }, []);
+
+  const fetchUsers = async () => {
+    try {
+      setLoading(true);
+      const { data, error } = await supabase
+        .from('users')
+        .select('*')
+        .order('name');
+      
+      if (error) {
+        console.error('Error fetching users:', error);
+        setUsers(mockUsers);
+      } else {
+        const convertedUsers: User[] = data?.map(u => ({
+          id: u.id,
+          employeeId: u.employee_id,
+          name: u.name,
+          nameKana: u.name_kana,
+          email: u.email,
+          phone: u.phone,
+          department: u.department,
+          role: u.role,
+          defaultWorkDays: u.default_work_days || [
+            { day: 1, startTime: '09:00', endTime: '18:00' },
+            { day: 2, startTime: '09:00', endTime: '18:00' },
+            { day: 3, startTime: '09:00', endTime: '18:00' },
+            { day: 4, startTime: '09:00', endTime: '18:00' },
+            { day: 5, startTime: '09:00', endTime: '18:00' },
+          ]
+        })) || [];
+        setUsers(convertedUsers);
+      }
+    } catch (error) {
+      console.error('Error fetching users:', error);
+      setUsers(mockUsers);
+    } finally {
+      setLoading(false);
+    }
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (editingUser) {
-      const updatedUsers = users.map(user => 
-        user.id === editingUser.id ? { ...user, ...formData } : user
-      );
-      saveUsers(updatedUsers);
-    } else {
-      const newUser: User = {
-        id: Date.now().toString(),
-        employeeId: formData.employeeId || '',
-        name: formData.name || '',
-        nameKana: formData.nameKana || '',
-        email: formData.email || '',
-        phone: formData.phone || '',
-        department: formData.department as Department || '所属なし',
-        role: formData.role as UserRole || 'employee',
-        defaultWorkDays: [
-          { day: 1, startTime: '09:00', endTime: '18:00' },
-          { day: 2, startTime: '09:00', endTime: '18:00' },
-          { day: 3, startTime: '09:00', endTime: '18:00' },
-          { day: 4, startTime: '09:00', endTime: '18:00' },
-          { day: 5, startTime: '09:00', endTime: '18:00' },
-        ]
-      };
-      saveUsers([...users, newUser]);
+    
+    // Enhanced Validation
+    const errors = [];
+    
+    if (!formData.name?.trim()) {
+      errors.push('名前を入力してください');
     }
-    setIsModalOpen(false);
-    setEditingUser(null);
-    setFormData({});
+    
+    if (!formData.email?.trim()) {
+      errors.push('メールアドレスを入力してください');
+    } else if (!formData.email.endsWith('@terao-f.co.jp')) {
+      errors.push('メールアドレスは@terao-f.co.jpドメインである必要があります');
+    }
+    
+    if (!formData.employeeId?.trim()) {
+      errors.push('社員番号を入力してください');
+    }
+    
+    if (!formData.department) {
+      errors.push('所属を選択してください');
+    }
+    
+    if (!formData.role) {
+      errors.push('権限を選択してください');
+    }
+    
+    if (errors.length > 0) {
+      toast.error(errors[0]);
+      return;
+    }
+    
+    try {
+      const defaultWorkDays = [
+        { day: 1, startTime: '09:00', endTime: '18:00' },
+        { day: 2, startTime: '09:00', endTime: '18:00' },
+        { day: 3, startTime: '09:00', endTime: '18:00' },
+        { day: 4, startTime: '09:00', endTime: '18:00' },
+        { day: 5, startTime: '09:00', endTime: '18:00' },
+      ];
+
+      if (editingUser) {
+        // Update user
+        const { error } = await supabase
+          .from('users')
+          .update({
+            employee_id: formData.employeeId || '',
+            name: formData.name || '',
+            name_kana: formData.nameKana || '',
+            email: formData.email || '',
+            phone: formData.phone || '',
+            department: formData.department || '所属なし',
+            role: formData.role || 'employee',
+            default_work_days: formData.defaultWorkDays || defaultWorkDays,
+            updated_at: new Date().toISOString()
+          })
+          .eq('id', editingUser.id);
+        
+        if (error) throw error;
+        toast.success('ユーザーを更新しました');
+      } else {
+        // Create user
+        const { error } = await supabase
+          .from('users')
+          .insert([{
+            employee_id: formData.employeeId || '',
+            name: formData.name || '',
+            name_kana: formData.nameKana || '',
+            email: formData.email || '',
+            phone: formData.phone || '',
+            department: formData.department || '所属なし',
+            role: formData.role || 'employee',
+            default_work_days: defaultWorkDays
+          }]);
+        
+        if (error) throw error;
+        toast.success('ユーザーを作成しました');
+      }
+
+      // Refresh data
+      await fetchUsers();
+      
+      setIsModalOpen(false);
+      setEditingUser(null);
+      setFormData({});
+    } catch (error) {
+      console.error('Error saving user:', error);
+      toast.error('保存中にエラーが発生しました');
+    }
   };
 
   const handleEdit = (user: User) => {
@@ -55,12 +154,35 @@ export default function AdminUsers() {
     setIsModalOpen(true);
   };
 
-  const handleDelete = (userId: string) => {
+  const handleDelete = async (userId: string) => {
     if (confirm('このユーザーを削除してもよろしいですか？')) {
-      const updatedUsers = users.filter(user => user.id !== userId);
-      saveUsers(updatedUsers);
+      try {
+        const { error } = await supabase
+          .from('users')
+          .delete()
+          .eq('id', userId);
+        
+        if (error) throw error;
+        
+        toast.success('ユーザーを削除しました');
+        await fetchUsers(); // Refresh data
+      } catch (error) {
+        console.error('Error deleting user:', error);
+        toast.error('削除中にエラーが発生しました');
+      }
     }
   };
+
+  if (loading) {
+    return (
+      <div className="h-full flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-gray-900 mx-auto"></div>
+          <p className="mt-4 text-gray-600">ユーザーデータを読み込み中...</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="h-full flex flex-col">
@@ -200,8 +322,10 @@ export default function AdminUsers() {
                   type="email"
                   value={formData.email || ''}
                   onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+                  placeholder="example@terao-f.co.jp"
                   className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
                 />
+                <p className="mt-1 text-xs text-gray-500">@terao-f.co.jpドメインのみ使用可能です</p>
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700">電話番号</label>

@@ -1,6 +1,8 @@
 import { Link, useLocation } from 'react-router-dom';
-import { Calendar, Car, DoorOpen, Clock, Users, Settings, Building2, Box } from 'lucide-react';
+import { Calendar, Car, DoorOpen, Clock, Users, Settings, Building2, Box, Bell, Shield } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
+import { usePermissions } from '../hooks/usePermissions';
+import PermissionGate from './PermissionGate';
 
 interface SidebarProps {
   onClose?: () => void;
@@ -9,22 +11,30 @@ interface SidebarProps {
 export default function Sidebar({ onClose }: SidebarProps) {
   const location = useLocation();
   const { currentUser, logout } = useAuth();
-  
-  const isAdmin = currentUser?.role === 'admin' || currentUser?.role === 'president';
+  const { 
+    canReadSchedules, 
+    canWriteSchedules, 
+    canReadLeaveRequests, 
+    canAccessAdmin, 
+    canViewAuditLogs,
+    isAdminOrAbove 
+  } = usePermissions();
 
   const navigation = [
-    { name: 'ダッシュボード', href: '/', icon: <Building2 className="h-6 w-6" /> },
-    { name: 'カレンダー', href: '/calendar/my', icon: <Calendar className="h-6 w-6" /> },
-    { name: '車両予約', href: '/calendar/vehicle', icon: <Car className="h-6 w-6" /> },
-    { name: '会議室予約', href: '/calendar/room', icon: <DoorOpen className="h-6 w-6" /> },
-    { name: 'サンプル予約', href: '/calendar/sample', icon: <Box className="h-6 w-6" /> },
-    { name: '休暇申請', href: '/leave', icon: <Clock className="h-6 w-6" /> },
+    { name: 'ダッシュボード', href: '/', icon: <Building2 className="h-6 w-6" />, show: true },
+    { name: 'カレンダー', href: '/calendar/my', icon: <Calendar className="h-6 w-6" />, show: canReadSchedules() },
+    { name: '車両予約', href: '/calendar/vehicle', icon: <Car className="h-6 w-6" />, show: canWriteSchedules() },
+    { name: '会議室予約', href: '/calendar/room', icon: <DoorOpen className="h-6 w-6" />, show: canWriteSchedules() },
+    { name: 'サンプル予約', href: '/calendar/sample', icon: <Box className="h-6 w-6" />, show: canWriteSchedules() },
+    { name: '休暇申請', href: '/leave', icon: <Clock className="h-6 w-6" />, show: canReadLeaveRequests() },
+    { name: '通知設定', href: '/settings/notifications', icon: <Bell className="h-6 w-6" />, show: true },
   ];
 
   const adminNavigation = [
-    { name: 'ユーザー管理', href: '/admin/users', icon: <Users className="h-6 w-6" /> },
-    { name: 'グループ管理', href: '/admin/groups', icon: <Users className="h-6 w-6" /> },
-    { name: '設備管理', href: '/admin/equipment', icon: <Settings className="h-6 w-6" /> },
+    { name: 'ユーザー管理', href: '/admin/users', icon: <Users className="h-6 w-6" />, permission: 'users:read' as const },
+    { name: 'グループ管理', href: '/admin/groups', icon: <Users className="h-6 w-6" />, permission: 'groups:read' as const },
+    { name: '設備管理', href: '/admin/equipment', icon: <Settings className="h-6 w-6" />, permission: 'equipment:read' as const },
+    { name: '監査ログ', href: '/admin/audit', icon: <Shield className="h-6 w-6" />, permission: 'admin:audit_logs' as const },
   ];
 
   const handleLinkClick = () => {
@@ -39,6 +49,8 @@ export default function Sidebar({ onClose }: SidebarProps) {
         </div>
         <nav className="mt-5 flex-1 px-2 bg-white space-y-1">
           {navigation.map((item) => {
+            if (!item.show) return null;
+            
             const isActive = location.pathname === item.href || 
                             (item.href !== '/' && location.pathname.startsWith(item.href));
             return (
@@ -61,7 +73,7 @@ export default function Sidebar({ onClose }: SidebarProps) {
             );
           })}
 
-          {isAdmin && (
+          <PermissionGate permission="admin:access">
             <div className="pt-6">
               <div className="px-3 mb-2 text-xs font-semibold text-gray-500 uppercase tracking-wider">
                 管理者メニュー
@@ -69,26 +81,27 @@ export default function Sidebar({ onClose }: SidebarProps) {
               {adminNavigation.map((item) => {
                 const isActive = location.pathname === item.href;
                 return (
-                  <Link
-                    key={item.name}
-                    to={item.href}
-                    onClick={handleLinkClick}
-                    className={`
-                      group flex items-center px-2 py-2 text-sm font-medium rounded-md
-                      ${isActive
-                        ? 'bg-blue-100 text-blue-900'
-                        : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'}
-                    `}
-                  >
-                    <div className={`mr-3 ${isActive ? 'text-blue-500' : 'text-gray-400 group-hover:text-gray-500'}`}>
-                      {item.icon}
-                    </div>
-                    {item.name}
-                  </Link>
+                  <PermissionGate key={item.name} permission={item.permission}>
+                    <Link
+                      to={item.href}
+                      onClick={handleLinkClick}
+                      className={`
+                        group flex items-center px-2 py-2 text-sm font-medium rounded-md
+                        ${isActive
+                          ? 'bg-blue-100 text-blue-900'
+                          : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'}
+                      `}
+                    >
+                      <div className={`mr-3 ${isActive ? 'text-blue-500' : 'text-gray-400 group-hover:text-gray-500'}`}>
+                        {item.icon}
+                      </div>
+                      {item.name}
+                    </Link>
+                  </PermissionGate>
                 );
               })}
             </div>
-          )}
+          </PermissionGate>
         </nav>
       </div>
       <div className="flex-shrink-0 flex border-t border-gray-200 p-4">

@@ -1,24 +1,16 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { mockRooms, mockVehicles, mockSampleEquipment } from '../../data/mockData';
 import { Room, Vehicle, SampleEquipment } from '../../types';
 import { Plus, Pencil, Trash2, Car, DoorOpen, Box, X } from 'lucide-react';
+import { supabase } from '../../lib/supabase';
+import toast from 'react-hot-toast';
 
 export default function AdminEquipment() {
   // State for each equipment type
-  const [rooms, setRooms] = useState<Room[]>(() => {
-    const savedRooms = localStorage.getItem('rooms');
-    return savedRooms ? JSON.parse(savedRooms) : mockRooms;
-  });
-
-  const [vehicles, setVehicles] = useState<Vehicle[]>(() => {
-    const savedVehicles = localStorage.getItem('vehicles');
-    return savedVehicles ? JSON.parse(savedVehicles) : mockVehicles;
-  });
-
-  const [sampleEquipment, setSampleEquipment] = useState<SampleEquipment[]>(() => {
-    const savedEquipment = localStorage.getItem('sampleEquipment');
-    return savedEquipment ? JSON.parse(savedEquipment) : mockSampleEquipment;
-  });
+  const [rooms, setRooms] = useState<Room[]>([]);
+  const [vehicles, setVehicles] = useState<Vehicle[]>([]);
+  const [sampleEquipment, setSampleEquipment] = useState<SampleEquipment[]>([]);
+  const [loading, setLoading] = useState(true);
 
   // Modal state
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -26,84 +18,174 @@ export default function AdminEquipment() {
   const [editingItem, setEditingItem] = useState<any>(null);
   const [formData, setFormData] = useState<any>({});
 
-  // Save functions
-  const saveRooms = (newRooms: Room[]) => {
-    setRooms(newRooms);
-    localStorage.setItem('rooms', JSON.stringify(newRooms));
-  };
+  // Load data from Supabase
+  useEffect(() => {
+    fetchAllData();
+  }, []);
 
-  const saveVehicles = (newVehicles: Vehicle[]) => {
-    setVehicles(newVehicles);
-    localStorage.setItem('vehicles', JSON.stringify(newVehicles));
-  };
+  const fetchAllData = async () => {
+    try {
+      setLoading(true);
+      
+      // Fetch rooms
+      const { data: roomsData, error: roomsError } = await supabase
+        .from('rooms')
+        .select('*')
+        .order('name');
+      
+      if (roomsError) {
+        console.error('Error fetching rooms:', roomsError);
+        setRooms(mockRooms);
+      } else {
+        setRooms(roomsData || []);
+      }
 
-  const saveSampleEquipment = (newEquipment: SampleEquipment[]) => {
-    setSampleEquipment(newEquipment);
-    localStorage.setItem('sampleEquipment', JSON.stringify(newEquipment));
+      // Fetch vehicles  
+      const { data: vehiclesData, error: vehiclesError } = await supabase
+        .from('vehicles')
+        .select('*')
+        .order('name');
+      
+      if (vehiclesError) {
+        console.error('Error fetching vehicles:', vehiclesError);
+        setVehicles(mockVehicles);
+      } else {
+        const convertedVehicles = vehiclesData?.map(v => ({
+          id: v.id,
+          name: v.name,
+          licensePlate: v.license_plate,
+          type: v.type,
+          createdBy: v.created_by
+        })) || [];
+        setVehicles(convertedVehicles);
+      }
+
+      // Fetch sample equipment
+      const { data: equipmentData, error: equipmentError } = await supabase
+        .from('sample_equipment')
+        .select('*')
+        .order('name');
+      
+      if (equipmentError) {
+        console.error('Error fetching sample equipment:', equipmentError);
+        setSampleEquipment(mockSampleEquipment);
+      } else {
+        setSampleEquipment(equipmentData || []);
+      }
+    } catch (error) {
+      console.error('Error fetching data:', error);
+      setRooms(mockRooms);
+      setVehicles(mockVehicles);
+      setSampleEquipment(mockSampleEquipment);
+    } finally {
+      setLoading(false);
+    }
   };
 
   // Handle form submission
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
-    const newId = Date.now().toString();
-    
-    switch (modalType) {
-      case 'room':
-        if (editingItem) {
-          const updatedRooms = rooms.map(room => 
-            room.id === editingItem.id ? { ...room, ...formData } : room
-          );
-          saveRooms(updatedRooms);
-        } else {
-          const newRoom: Room = {
-            id: newId,
-            name: formData.name || '',
-            createdBy: '1', // Assuming current user ID
-          };
-          saveRooms([...rooms, newRoom]);
-        }
-        break;
+    try {
+      switch (modalType) {
+        case 'room':
+          if (editingItem) {
+            // Update room
+            const { error } = await supabase
+              .from('rooms')
+              .update({
+                name: formData.name || '',
+                updated_at: new Date().toISOString()
+              })
+              .eq('id', editingItem.id);
+            
+            if (error) throw error;
+            toast.success('会議室を更新しました');
+          } else {
+            // Create room
+            const { error } = await supabase
+              .from('rooms')
+              .insert([{
+                name: formData.name || '',
+                created_by: '550e8400-e29b-41d4-a716-446655440001' // Default user ID
+              }]);
+            
+            if (error) throw error;
+            toast.success('会議室を作成しました');
+          }
+          break;
 
-      case 'vehicle':
-        if (editingItem) {
-          const updatedVehicles = vehicles.map(vehicle => 
-            vehicle.id === editingItem.id ? { ...vehicle, ...formData } : vehicle
-          );
-          saveVehicles(updatedVehicles);
-        } else {
-          const newVehicle: Vehicle = {
-            id: newId,
-            name: formData.name || '',
-            licensePlate: formData.licensePlate || '',
-            type: formData.type || '',
-            createdBy: '1', // Assuming current user ID
-          };
-          saveVehicles([...vehicles, newVehicle]);
-        }
-        break;
+        case 'vehicle':
+          if (editingItem) {
+            // Update vehicle
+            const { error } = await supabase
+              .from('vehicles')
+              .update({
+                name: formData.name || '',
+                license_plate: formData.licensePlate || '',
+                type: formData.type || '',
+                updated_at: new Date().toISOString()
+              })
+              .eq('id', editingItem.id);
+            
+            if (error) throw error;
+            toast.success('車両を更新しました');
+          } else {
+            // Create vehicle
+            const { error } = await supabase
+              .from('vehicles')
+              .insert([{
+                name: formData.name || '',
+                license_plate: formData.licensePlate || '',
+                type: formData.type || '',
+                created_by: '550e8400-e29b-41d4-a716-446655440001' // Default user ID
+              }]);
+            
+            if (error) throw error;
+            toast.success('車両を作成しました');
+          }
+          break;
 
-      case 'sample':
-        if (editingItem) {
-          const updatedEquipment = sampleEquipment.map(equipment => 
-            equipment.id === editingItem.id ? { ...equipment, ...formData } : equipment
-          );
-          saveSampleEquipment(updatedEquipment);
-        } else {
-          const newEquipment: SampleEquipment = {
-            id: newId,
-            name: formData.name || '',
-            type: formData.type || 'CAD・マーキング',
-          };
-          saveSampleEquipment([...sampleEquipment, newEquipment]);
-        }
-        break;
+        case 'sample':
+          if (editingItem) {
+            // Update sample equipment
+            const { error } = await supabase
+              .from('sample_equipment')
+              .update({
+                name: formData.name || '',
+                type: formData.type || 'サンプル作成',
+                updated_at: new Date().toISOString()
+              })
+              .eq('id', editingItem.id);
+            
+            if (error) throw error;
+            toast.success('サンプル設備を更新しました');
+          } else {
+            // Create sample equipment
+            const { error } = await supabase
+              .from('sample_equipment')
+              .insert([{
+                name: formData.name || '',
+                type: formData.type || 'サンプル作成'
+              }]);
+            
+            if (error) throw error;
+            toast.success('サンプル設備を作成しました');
+          }
+          break;
+      }
+
+      // Refresh data
+      await fetchAllData();
+      
+      setIsModalOpen(false);
+      setEditingItem(null);
+      setFormData({});
+      setModalType(null);
+    } catch (error) {
+      console.error('Error saving data:', error);
+      toast.error('保存中にエラーが発生しました');
     }
-
-    setIsModalOpen(false);
-    setEditingItem(null);
-    setFormData({});
-    setModalType(null);
   };
 
   // Handle edit
@@ -115,21 +197,44 @@ export default function AdminEquipment() {
   };
 
   // Handle delete
-  const handleDelete = (id: string, type: 'room' | 'vehicle' | 'sample') => {
+  const handleDelete = async (id: string, type: 'room' | 'vehicle' | 'sample') => {
     if (confirm('この設備を削除してもよろしいですか？')) {
-      switch (type) {
-        case 'room':
-          saveRooms(rooms.filter(room => room.id !== id));
-          break;
-        case 'vehicle':
-          saveVehicles(vehicles.filter(vehicle => vehicle.id !== id));
-          break;
-        case 'sample':
-          saveSampleEquipment(sampleEquipment.filter(equipment => equipment.id !== id));
-          break;
+      try {
+        let error;
+        
+        switch (type) {
+          case 'room':
+            ({ error } = await supabase.from('rooms').delete().eq('id', id));
+            break;
+          case 'vehicle':
+            ({ error } = await supabase.from('vehicles').delete().eq('id', id));
+            break;
+          case 'sample':
+            ({ error } = await supabase.from('sample_equipment').delete().eq('id', id));
+            break;
+        }
+
+        if (error) throw error;
+        
+        toast.success('削除しました');
+        await fetchAllData(); // Refresh data
+      } catch (error) {
+        console.error('Error deleting data:', error);
+        toast.error('削除中にエラーが発生しました');
       }
     }
   };
+
+  if (loading) {
+    return (
+      <div className="h-full flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-gray-900 mx-auto"></div>
+          <p className="mt-4 text-gray-600">設備データを読み込み中...</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="h-full flex flex-col space-y-8">
@@ -401,6 +506,7 @@ export default function AdminEquipment() {
                     onChange={(e) => setFormData({ ...formData, type: e.target.value })}
                     className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
                   >
+                    <option value="サンプル作成">サンプル作成</option>
                     <option value="CAD・マーキング">CAD・マーキング</option>
                     <option value="サンプル裁断">サンプル裁断</option>
                     <option value="サンプル縫製">サンプル縫製</option>

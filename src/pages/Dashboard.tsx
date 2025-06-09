@@ -1,3 +1,4 @@
+import React from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Calendar, Users, Clock, Car, DoorOpen, Box } from 'lucide-react';
 import { format } from 'date-fns';
@@ -8,7 +9,12 @@ import { useCalendar } from '../contexts/CalendarContext';
 export default function Dashboard() {
   const navigate = useNavigate();
   const { currentUser } = useAuth();
-  const { getSchedulesForDate } = useCalendar();
+  const { getSchedulesForDate, refreshSchedules } = useCalendar();
+  
+  // Refresh schedules when dashboard loads
+  React.useEffect(() => {
+    refreshSchedules();
+  }, [refreshSchedules]);
   
   const today = new Date();
   const todaySchedules = getSchedulesForDate(today);

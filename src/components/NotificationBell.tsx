@@ -1,0 +1,324 @@
+import { useState, useEffect } from 'react';
+import { Bell, X, Check, AlertCircle, Calendar, Users, Mail } from 'lucide-react';
+import { format } from 'date-fns';
+import { ja } from 'date-fns/locale';
+import { notificationService } from '../services/notificationService';
+import { useAuth } from '../contexts/AuthContext';
+import { NotificationLog, NotificationCategory } from '../types';
+import { supabase } from '../lib/supabase';
+
+export default function NotificationBell() {
+  const { currentUser } = useAuth();
+  const [isOpen, setIsOpen] = useState(false);
+  const [notifications, setNotifications] = useState<NotificationLog[]>([]);
+  const [unreadCount, setUnreadCount] = useState(0);
+  const [loading, setLoading] = useState(false);
+
+  // Load notifications on mount and when user changes
+  useEffect(() => {
+    if (currentUser) {
+      // 一時的に無効化：notification_logsテーブルが存在しないため
+      console.log('通知機能は一時的に無効化されています（notification_logsテーブルが存在しません）');
+      // loadNotifications();
+      // subscribeToNotifications();
+    }
+  }, [currentUser]);
+
+  // Load recent notifications
+  const loadNotifications = async () => {
+    if (!currentUser) return;
+
+    setLoading(true);
+    try {
+      // 一時的に無効化
+      console.log('loadNotifications: 一時的に無効化中');
+      setNotifications([]);
+      setUnreadCount(0);
+      // const logs = await notificationService.getUserNotificationLogs(currentUser.id, 20);
+      // setNotifications(logs);
+      
+      // // Count unread (notifications from the last 24 hours that haven't been viewed)
+      // const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
+      // const unread = logs.filter(log => 
+      //   log.status === 'sent' && 
+      //   new Date(log.createdAt) > oneDayAgo
+      // ).length;
+      // setUnreadCount(unread);
+    } catch (error) {
+      console.error('Error loading notifications:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Subscribe to real-time notifications
+  const subscribeToNotifications = () => {
+    if (!currentUser) return;
+
+    // 一時的に無効化
+    console.log('subscribeToNotifications: 一時的に無効化中');
+    return () => {}; // 空の cleanup 関数
+
+    // const channel = supabase
+    //   .channel(`notifications:${currentUser.id}`)
+    //   .on(
+    //     'postgres_changes',
+    //     {
+    //       event: 'INSERT',
+    //       schema: 'public',
+    //       table: 'notification_logs',
+    //       filter: `user_id=eq.${currentUser.id}`
+    //     },
+    //     (payload) => {
+    //       // Add new notification to the top of the list
+    //       const newNotification = mapNotificationFromDb(payload.new);
+    //       setNotifications(prev => [newNotification, ...prev].slice(0, 20));
+    //       setUnreadCount(prev => prev + 1);
+          
+    //       // Show browser notification if it's a push notification
+    //       if (newNotification.type === 'push' && newNotification.status === 'sent') {
+    //         showBrowserNotification(newNotification);
+    //       }
+    //     }
+    //   )
+    //   .subscribe();
+
+    // return () => {
+    //   supabase.removeChannel(channel);
+    // };
+  };
+
+  // Show browser notification
+  const showBrowserNotification = async (notification: NotificationLog) => {
+    if ('Notification' in window && Notification.permission === 'granted') {
+      const notif = new Notification(notification.subject || 'お知らせ', {
+        body: notification.content || '',
+        icon: '/icon-192x192.png',
+        badge: '/badge-72x72.png',
+        tag: notification.id,
+        timestamp: new Date(notification.createdAt).getTime()
+      });
+
+      notif.onclick = () => {
+        handleNotificationClick(notification);
+        notif.close();
+      };
+    }
+  };
+
+  // Handle notification click
+  const handleNotificationClick = (notification: NotificationLog) => {
+    const metadata = notification.metadata;
+    
+    switch (notification.category) {
+      case 'schedule_created':
+      case 'schedule_updated':
+      case 'schedule_reminder':
+        if (metadata?.scheduleId) {
+          window.location.href = `/calendar?scheduleId=${metadata.scheduleId}`;
+        }
+        break;
+      
+      case 'leave_request_submitted':
+      case 'leave_request_approved':
+      case 'leave_request_rejected':
+        window.location.href = '/leave-requests';
+        break;
+      
+      default:
+        window.location.href = '/dashboard';
+    }
+    
+    setIsOpen(false);
+  };
+
+  // Get icon for notification category
+  const getNotificationIcon = (category: NotificationCategory) => {
+    switch (category) {
+      case 'schedule_created':
+      case 'schedule_updated':
+      case 'schedule_deleted':
+      case 'schedule_reminder':
+        return <Calendar className="h-5 w-5" />;
+      
+      case 'leave_request_submitted':
+      case 'leave_request_approved':
+      case 'leave_request_rejected':
+        return <Users className="h-5 w-5" />;
+      
+      default:
+        return <Bell className="h-5 w-5" />;
+    }
+  };
+
+  // Get color for notification status
+  const getStatusColor = (status: string) => {
+    switch (status) {
+      case 'sent':
+        return 'text-green-600';
+      case 'failed':
+        return 'text-red-600';
+      case 'pending':
+        return 'text-yellow-600';
+      default:
+        return 'text-gray-600';
+    }
+  };
+
+  // Format notification time
+  const formatNotificationTime = (date: Date) => {
+    const now = new Date();
+    const diffMs = now.getTime() - new Date(date).getTime();
+    const diffMinutes = Math.floor(diffMs / 60000);
+    const diffHours = Math.floor(diffMinutes / 60);
+    const diffDays = Math.floor(diffHours / 24);
+
+    if (diffMinutes < 1) return '今';
+    if (diffMinutes < 60) return `${diffMinutes}分前`;
+    if (diffHours < 24) return `${diffHours}時間前`;
+    if (diffDays < 7) return `${diffDays}日前`;
+    
+    return format(new Date(date), 'MM/dd', { locale: ja });
+  };
+
+  // Map notification from database
+  const mapNotificationFromDb = (data: any): NotificationLog => {
+    return {
+      id: data.id,
+      userId: data.user_id,
+      type: data.type,
+      category: data.category,
+      subject: data.subject,
+      content: data.content,
+      metadata: data.metadata,
+      status: data.status,
+      errorMessage: data.error_message,
+      sentAt: data.sent_at ? new Date(data.sent_at) : undefined,
+      createdAt: new Date(data.created_at)
+    };
+  };
+
+  // Mark all as read
+  const markAllAsRead = () => {
+    setUnreadCount(0);
+  };
+
+  return (
+    <div className="relative">
+      {/* Notification Bell Button */}
+      <button
+        onClick={() => setIsOpen(!isOpen)}
+        className="relative p-2 text-gray-600 hover:text-gray-900 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 rounded-full"
+      >
+        <Bell className="h-6 w-6" />
+        {unreadCount > 0 && (
+          <span className="absolute top-0 right-0 inline-flex items-center justify-center px-2 py-1 text-xs font-bold leading-none text-white transform translate-x-1/2 -translate-y-1/2 bg-red-600 rounded-full">
+            {unreadCount > 9 ? '9+' : unreadCount}
+          </span>
+        )}
+      </button>
+
+      {/* Notification Dropdown */}
+      {isOpen && (
+        <>
+          {/* Backdrop */}
+          <div 
+            className="fixed inset-0 z-30" 
+            onClick={() => setIsOpen(false)}
+          />
+          
+          {/* Dropdown */}
+          <div className="absolute right-0 mt-2 w-96 bg-white rounded-lg shadow-lg ring-1 ring-black ring-opacity-5 z-40">
+            <div className="p-4 border-b border-gray-200">
+              <div className="flex items-center justify-between">
+                <h3 className="text-lg font-medium text-gray-900">通知</h3>
+                <div className="flex items-center space-x-2">
+                  {unreadCount > 0 && (
+                    <button
+                      onClick={markAllAsRead}
+                      className="text-sm text-indigo-600 hover:text-indigo-500"
+                    >
+                      すべて既読にする
+                    </button>
+                  )}
+                  <button
+                    onClick={() => setIsOpen(false)}
+                    className="text-gray-400 hover:text-gray-500"
+                  >
+                    <X className="h-5 w-5" />
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            <div className="max-h-96 overflow-y-auto">
+              {loading ? (
+                <div className="p-4 text-center text-gray-500">
+                  読み込み中...
+                </div>
+              ) : notifications.length === 0 ? (
+                <div className="p-8 text-center text-gray-500">
+                  <Bell className="h-12 w-12 mx-auto mb-3 text-gray-300" />
+                  <p>通知はありません</p>
+                </div>
+              ) : (
+                <div className="divide-y divide-gray-200">
+                  {notifications.map((notification) => (
+                    <div
+                      key={notification.id}
+                      className="p-4 hover:bg-gray-50 cursor-pointer transition-colors"
+                      onClick={() => handleNotificationClick(notification)}
+                    >
+                      <div className="flex items-start">
+                        <div className={`flex-shrink-0 ${getStatusColor(notification.status)}`}>
+                          {getNotificationIcon(notification.category)}
+                        </div>
+                        <div className="ml-3 flex-1">
+                          <p className="text-sm font-medium text-gray-900">
+                            {notification.subject}
+                          </p>
+                          {notification.content && (
+                            <p className="mt-1 text-sm text-gray-600 line-clamp-2">
+                              {notification.content}
+                            </p>
+                          )}
+                          <div className="mt-2 flex items-center text-xs text-gray-500">
+                            <span className="flex items-center">
+                              {notification.type === 'email' ? (
+                                <Mail className="h-3 w-3 mr-1" />
+                              ) : (
+                                <Bell className="h-3 w-3 mr-1" />
+                              )}
+                              {formatNotificationTime(notification.createdAt)}
+                            </span>
+                            {notification.status === 'failed' && (
+                              <span className="ml-2 flex items-center text-red-600">
+                                <AlertCircle className="h-3 w-3 mr-1" />
+                                送信失敗
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {notifications.length > 0 && (
+              <div className="p-4 border-t border-gray-200">
+                <a
+                  href="/settings/notifications"
+                  className="text-sm text-indigo-600 hover:text-indigo-500 font-medium"
+                >
+                  通知設定を管理
+                </a>
+              </div>
+            )}
+          </div>
+        </>
+      )}
+    </div>
+  );
+}

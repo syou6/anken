@@ -3,7 +3,7 @@ import { User, Department, UserRole, Group, Schedule, Room, Vehicle, SampleEquip
 // Mock Users
 export const mockUsers: User[] = [
   {
-    id: '1',
+    id: '550e8400-e29b-41d4-a716-446655440001',
     employeeId: '012E3D24690F653F',
     name: '山田 太郎',
     nameKana: 'やまだ たろう',
@@ -20,7 +20,7 @@ export const mockUsers: User[] = [
     ]
   },
   {
-    id: '2',
+    id: '550e8400-e29b-41d4-a716-446655440002',
     employeeId: '112E3D24690F653G',
     name: '鈴木 花子',
     nameKana: 'すずき はなこ',
@@ -37,7 +37,7 @@ export const mockUsers: User[] = [
     ]
   },
   {
-    id: '3',
+    id: '550e8400-e29b-41d4-a716-446655440003',
     employeeId: '212E3D24690F653H',
     name: '佐藤 次郎',
     nameKana: 'さとう じろう',
@@ -109,7 +109,7 @@ export const mockGroups: Group[] = [
   {
     id: '5',
     name: 'プロジェクトA',
-    type: 'task',
+    type: 'business',
     members: ['1', '2', '3'],
     createdBy: '1',
     createdAt: new Date('2025-01-15'),

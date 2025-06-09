@@ -1,43 +1,95 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Group, GroupType } from '../../types';
 import { mockGroups } from '../../data/mockData';
 import { Plus, Pencil, Trash2, Users, X } from 'lucide-react';
+import { supabase } from '../../lib/supabase';
+import toast from 'react-hot-toast';
 
 export default function AdminGroups() {
-  const [groups, setGroups] = useState<Group[]>(() => {
-    const savedGroups = localStorage.getItem('groups');
-    return savedGroups ? JSON.parse(savedGroups) : mockGroups;
-  });
+  const [groups, setGroups] = useState<Group[]>([]);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingGroup, setEditingGroup] = useState<Group | null>(null);
   const [formData, setFormData] = useState<Partial<Group>>({});
+  const [loading, setLoading] = useState(true);
 
-  const saveGroups = (newGroups: Group[]) => {
-    setGroups(newGroups);
-    localStorage.setItem('groups', JSON.stringify(newGroups));
+  // Load groups from Supabase
+  useEffect(() => {
+    fetchGroups();
+  }, []);
+
+  const fetchGroups = async () => {
+    try {
+      setLoading(true);
+      const { data, error } = await supabase
+        .from('groups')
+        .select('*')
+        .order('type, name');
+      
+      if (error) {
+        console.error('Error fetching groups:', error);
+        setGroups(mockGroups);
+      } else {
+        const convertedGroups: Group[] = data?.map(g => ({
+          id: g.id,
+          name: g.name,
+          type: g.type,
+          members: g.members || [],
+          createdBy: g.created_by,
+          createdAt: new Date(g.created_at)
+        })) || [];
+        setGroups(convertedGroups);
+      }
+    } catch (error) {
+      console.error('Error fetching groups:', error);
+      setGroups(mockGroups);
+    } finally {
+      setLoading(false);
+    }
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (editingGroup) {
-      const updatedGroups = groups.map(group => 
-        group.id === editingGroup.id ? { ...group, ...formData } : group
-      );
-      saveGroups(updatedGroups);
-    } else {
-      const newGroup: Group = {
-        id: Date.now().toString(),
-        name: formData.name || '',
-        type: formData.type as GroupType || 'department',
-        members: formData.members || [],
-        createdBy: '1', // Assuming current user ID
-        createdAt: new Date(),
-      };
-      saveGroups([...groups, newGroup]);
+    
+    try {
+      if (editingGroup) {
+        // Update group
+        const { error } = await supabase
+          .from('groups')
+          .update({
+            name: formData.name || '',
+            type: formData.type || 'department',
+            members: formData.members || [],
+            updated_at: new Date().toISOString()
+          })
+          .eq('id', editingGroup.id);
+        
+        if (error) throw error;
+        toast.success('グループを更新しました');
+      } else {
+        // Create group
+        const { error } = await supabase
+          .from('groups')
+          .insert([{
+            name: formData.name || '',
+            type: formData.type as GroupType || 'department',
+            members: formData.members || [],
+            created_by: '550e8400-e29b-41d4-a716-446655440001' // Default user ID
+          }]);
+        
+        if (error) throw error;
+        toast.success('グループを作成しました');
+      }
+
+      // Refresh data
+      await fetchGroups();
+      
+      setIsModalOpen(false);
+      setEditingGroup(null);
+      setFormData({});
+    } catch (error) {
+      console.error('Error saving group:', error);
+      toast.error('保存中にエラーが発生しました');
     }
-    setIsModalOpen(false);
-    setEditingGroup(null);
-    setFormData({});
   };
 
   const handleEdit = (group: Group) => {
@@ -46,12 +98,35 @@ export default function AdminGroups() {
     setIsModalOpen(true);
   };
 
-  const handleDelete = (groupId: string) => {
+  const handleDelete = async (groupId: string) => {
     if (confirm('このグループを削除してもよろしいですか？')) {
-      const updatedGroups = groups.filter(group => group.id !== groupId);
-      saveGroups(updatedGroups);
+      try {
+        const { error } = await supabase
+          .from('groups')
+          .delete()
+          .eq('id', groupId);
+        
+        if (error) throw error;
+        
+        toast.success('グループを削除しました');
+        await fetchGroups(); // Refresh data
+      } catch (error) {
+        console.error('Error deleting group:', error);
+        toast.error('削除中にエラーが発生しました');
+      }
     }
   };
+
+  if (loading) {
+    return (
+      <div className="h-full flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-gray-900 mx-auto"></div>
+          <p className="mt-4 text-gray-600">グループデータを読み込み中...</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="h-full flex flex-col">
@@ -107,11 +182,11 @@ export default function AdminGroups() {
                 <td className="px-6 py-4 whitespace-nowrap">
                   <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${
                     group.type === 'department' ? 'bg-green-100 text-green-800' :
-                    group.type === 'task' ? 'bg-blue-100 text-blue-800' :
+                    group.type === 'business' ? 'bg-blue-100 text-blue-800' :
                     'bg-purple-100 text-purple-800'
                   }`}>
                     {group.type === 'department' ? '所属' :
-                     group.type === 'task' ? '業務' : '休暇申請'}
+                     group.type === 'business' ? '業務' : '休暇申請'}
                   </span>
                 </td>
                 <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
@@ -170,7 +245,7 @@ export default function AdminGroups() {
                   className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
                 >
                   <option value="department">所属</option>
-                  <option value="task">業務</option>
+                  <option value="business">業務</option>
                   <option value="leave">休暇申請</option>
                 </select>
               </div>

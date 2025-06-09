@@ -1,72 +1,56 @@
 import { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import { User } from '../types';
-import { mockUsers } from '../data/mockData';
 
 interface AuthContextType {
   currentUser: User | null;
-  isLoading: boolean;
   isAuthenticated: boolean;
-  login: (email: string, password: string) => Promise<boolean>;
+  switchUser: (user: User) => void;
   logout: () => void;
-  switchUser: () => void;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [currentUser, setCurrentUser] = useState<User | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
 
-  useEffect(() => {
-    // Check for stored user in localStorage
-    const storedUser = localStorage.getItem('currentUser');
-    if (storedUser) {
-      setCurrentUser(JSON.parse(storedUser));
-      setIsAuthenticated(true);
-    }
-    setIsLoading(false);
-  }, []);
-
-  const login = async (email: string, password: string): Promise<boolean> => {
-    setIsLoading(true);
-    try {
-      // Get users from localStorage or use mock data
-      const storedUsers = localStorage.getItem('users');
-      const users = storedUsers ? JSON.parse(storedUsers) : mockUsers;
-      
-      const user = users.find(user => user.email === email);
-      
-      if (user) {
-        setCurrentUser(user);
-        setIsAuthenticated(true);
-        localStorage.setItem('currentUser', JSON.stringify(user));
-        return true;
-      }
-      return false;
-    } finally {
-      setIsLoading(false);
-    }
+  const switchUser = (user: User) => {
+    console.log('ユーザー切り替え:', user.name);
+    setCurrentUser(user);
+    setIsAuthenticated(true);
+    // ローカルストレージに保存（共有PC対応）
+    localStorage.setItem('currentUser', JSON.stringify(user));
   };
 
   const logout = () => {
+    console.log('ログアウト');
     setCurrentUser(null);
     setIsAuthenticated(false);
     localStorage.removeItem('currentUser');
   };
 
-  const switchUser = () => {
-    logout();
-  };
+  // アプリ起動時にローカルストレージからユーザー情報を復元
+  useEffect(() => {
+    const savedUser = localStorage.getItem('currentUser');
+    if (savedUser) {
+      try {
+        const user = JSON.parse(savedUser);
+        setCurrentUser(user);
+        setIsAuthenticated(true);
+        console.log('保存されたユーザー情報を復元:', user.name);
+      } catch (error) {
+        console.error('ユーザー情報の復元に失敗:', error);
+        localStorage.removeItem('currentUser');
+      }
+    }
+  }, []);
 
   return (
     <AuthContext.Provider value={{ 
-      currentUser, 
-      isLoading,
+      currentUser,
       isAuthenticated,
-      login, 
-      logout,
-      switchUser
+      switchUser,
+      logout
     }}>
       {children}
     </AuthContext.Provider>

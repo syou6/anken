@@ -29,7 +29,7 @@ export interface WorkDay {
 }
 
 // Group types
-export type GroupType = 'department' | 'task' | 'leave';
+export type GroupType = 'department' | 'business' | 'leave';
 
 export interface Group {
   id: string;
@@ -42,11 +42,26 @@ export interface Group {
 
 // Calendar and schedule types
 export type ScheduleType = 
-  | '15分無料相談' 
-  | 'オンライン商談' 
-  | '会議' 
-  | '来訪' 
-  | '工事' 
+  // 車両予約用
+  | '外出'
+  | '営業'
+  | '配送'
+  | '出張'
+  // 会議室予約用
+  | '会議'
+  | '打ち合わせ'
+  | '面接'
+  | '研修'
+  | 'プレゼン'
+  // サンプル予約用
+  | 'サンプル作成'
+  | 'CAD・マーキング'
+  | 'サンプル裁断'
+  | 'サンプル縫製'
+  | 'サンプル内職'
+  | 'プレス'
+  | '仕上げ・梱包'
+  // 共通
   | 'その他';
 
 export type RecurrenceType = 
@@ -60,7 +75,7 @@ export type RecurrenceType =
 
 export interface Schedule {
   id: string;
-  type: ScheduleType;
+  type: string; // ScheduleType から string へ変更（予約種別によって動的に変更されるため）
   title: string;
   details: string;
   startTime: Date;
@@ -74,11 +89,19 @@ export interface Schedule {
   createdAt: Date;
   updatedBy: string | null; // User ID
   updatedAt: Date | null;
+  // サンプル予約用の追加フィールド
+  quantity?: number;
+  assignedTo?: string;
+  notes?: string;
+  // Google Meet連携用フィールド
+  meetLink?: string;
+  meetingType?: 'in-person' | 'online' | 'hybrid';
 }
 
 export interface Recurrence {
-  type: RecurrenceType;
+  frequency: string;
   interval: number;
+  endType: 'never' | 'date' | 'count';
   endDate: Date | null;
   count: number | null;
   weekdays?: number[]; // 0-6 for Sunday-Saturday
@@ -86,6 +109,7 @@ export interface Recurrence {
 
 export interface Equipment {
   id: string;
+  name: string;
   type: 'room' | 'vehicle' | 'sample';
 }
 
@@ -114,7 +138,7 @@ export interface Vehicle {
 export interface SampleEquipment {
   id: string;
   name: string;
-  type: 'CAD・マーキング' | 'サンプル裁断' | 'サンプル縫製' | 'サンプル内職' | 'プレス' | '仕上げ・梱包';
+  type: 'サンプル作成' | 'CAD・マーキング' | 'サンプル裁断' | 'サンプル縫製' | 'サンプル内職' | 'プレス' | '仕上げ・梱包';
 }
 
 export interface SampleReservationDetails {
@@ -144,3 +168,91 @@ export interface LeaveRequest {
   }[];
   createdAt: Date;
 }
+
+// Security and Permission types
+export type Permission = 
+  // User management
+  | 'users:read'
+  | 'users:write'
+  | 'users:delete'
+  | 'users:manage_roles'
+  // Group management
+  | 'groups:read'
+  | 'groups:write'
+  | 'groups:delete'
+  | 'groups:manage_members'
+  // Equipment management
+  | 'equipment:read'
+  | 'equipment:write'
+  | 'equipment:delete'
+  // Schedule management
+  | 'schedules:read'
+  | 'schedules:write'
+  | 'schedules:delete'
+  | 'schedules:read_all'
+  | 'schedules:manage_others'
+  // Leave requests
+  | 'leave:read'
+  | 'leave:write'
+  | 'leave:approve'
+  | 'leave:read_all'
+  // Admin functions
+  | 'admin:access'
+  | 'admin:system_settings'
+  | 'admin:audit_logs'
+  // System functions
+  | 'system:backup'
+  | 'system:maintenance';
+
+export interface RolePermissions {
+  role: UserRole;
+  permissions: Permission[];
+  dataAccess: {
+    canViewAllUsers: boolean;
+    canViewAllSchedules: boolean;
+    canViewAllLeaveRequests: boolean;
+    canModifyOthersData: boolean;
+  };
+}
+
+export interface SecurityEvent {
+  id: string;
+  type: 'login' | 'logout' | 'permission_denied' | 'data_access' | 'data_modification' | 'admin_action' | 'security_violation';
+  userId: string;
+  userEmail: string;
+  userRole: UserRole;
+  action: string;
+  resource?: string;
+  resourceId?: string;
+  details?: Record<string, any>;
+  ipAddress?: string;
+  userAgent?: string;
+  timestamp: Date;
+  severity: 'low' | 'medium' | 'high' | 'critical';
+}
+
+export interface SessionInfo {
+  id: string;
+  userId: string;
+  createdAt: Date;
+  lastActivity: Date;
+  expiresAt: Date;
+  isActive: boolean;
+}
+
+export interface SecuritySettings {
+  sessionTimeout: number; // minutes
+  maxLoginAttempts: number;
+  lockoutDuration: number; // minutes
+  passwordPolicy: {
+    minLength: number;
+    requireUppercase: boolean;
+    requireLowercase: boolean;
+    requireNumbers: boolean;
+    requireSpecialChars: boolean;
+  };
+  auditLogRetention: number; // days
+}
+
+// Export notification types
+export * from './notifications';
