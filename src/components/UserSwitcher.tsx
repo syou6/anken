@@ -66,8 +66,8 @@ export default function UserSwitcher() {
   const handleLogout = () => {
     console.log('ログアウト実行');
     logout();
-    // ユーザー切り替え画面にリダイレクト
-    window.location.href = '/user-switch';
+    // React Routerを使用してナビゲート
+    window.location.replace('/user-switch');
   };
 
   return (
