@@ -1,9 +1,10 @@
 import { useState, useEffect } from 'react';
 import { User, Department, UserRole } from '../../types';
 import { mockUsers } from '../../data/mockData';
-import { Plus, Pencil, Trash2, UserPlus, X } from 'lucide-react';
+import { Plus, Pencil, Trash2, UserPlus, X, HelpCircle } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import toast from 'react-hot-toast';
+import UserDeleteHelper from '../../components/UserDeleteHelper';
 
 export default function AdminUsers() {
   const [users, setUsers] = useState<User[]>([]);
@@ -11,6 +12,7 @@ export default function AdminUsers() {
   const [editingUser, setEditingUser] = useState<User | null>(null);
   const [formData, setFormData] = useState<Partial<User>>({});
   const [loading, setLoading] = useState(true);
+  const [deleteHelperUser, setDeleteHelperUser] = useState<User | null>(null);
 
   // Load users from Supabase
   useEffect(() => {
@@ -157,18 +159,57 @@ export default function AdminUsers() {
   const handleDelete = async (userId: string) => {
     if (confirm('このユーザーを削除してもよろしいですか？')) {
       try {
+        // First, check if this user has any associated data
+        const userToDelete = users.find(u => u.id === userId);
+        if (!userToDelete) {
+          toast.error('ユーザーが見つかりません');
+          return;
+        }
+
+        // Log the deletion attempt
+        console.log('Attempting to delete user:', {
+          id: userId,
+          name: userToDelete.name,
+          role: userToDelete.role
+        });
+
         const { error } = await supabase
           .from('users')
           .delete()
           .eq('id', userId);
         
-        if (error) throw error;
+        if (error) {
+          console.error('Detailed deletion error:', error);
+          
+          // Check for specific error types
+          if (error.code === '23503') {
+            toast.error('このユーザーは他のデータで使用されているため削除できません');
+          } else if (error.code === '42501') {
+            toast.error('削除権限がありません');
+          } else if (error.message?.includes('row-level security')) {
+            toast.error('セキュリティポリシーにより削除が制限されています');
+          } else {
+            toast.error(`削除エラー: ${error.message || '不明なエラー'}`);
+          }
+          
+          // Provide more specific error messages
+          if (error.code === '23503') {
+            toast.error('このユーザーには関連データが存在するため削除できません。先に関連データを削除してください。');
+          } else if (error.code === '42501') {
+            toast.error('権限エラー: このユーザーを削除する権限がありません。');
+          } else if (error.message?.includes('row-level security')) {
+            toast.error('セキュリティポリシーによりこのユーザーを削除できません。');
+          } else {
+            toast.error(`削除エラー: ${error.message || '不明なエラーが発生しました'}`);
+          }
+          return;
+        }
         
         toast.success('ユーザーを削除しました');
         await fetchUsers(); // Refresh data
-      } catch (error) {
-        console.error('Error deleting user:', error);
-        toast.error('削除中にエラーが発生しました');
+      } catch (error: any) {
+        console.error('Unexpected error deleting user:', error);
+        toast.error(`予期しないエラー: ${error?.message || '削除中にエラーが発生しました'}`);
       }
     }
   };
@@ -260,12 +301,21 @@ export default function AdminUsers() {
                   <button 
                     onClick={() => handleEdit(user)}
                     className="text-indigo-600 hover:text-indigo-900 mr-3"
+                    title="編集"
                   >
                     <Pencil className="h-4 w-4" />
                   </button>
                   <button 
+                    onClick={() => setDeleteHelperUser(user)}
+                    className="text-yellow-600 hover:text-yellow-900 mr-3"
+                    title="削除前チェック"
+                  >
+                    <HelpCircle className="h-4 w-4" />
+                  </button>
+                  <button 
                     onClick={() => handleDelete(user.id)}
                     className="text-red-600 hover:text-red-900"
+                    title="削除"
                   >
                     <Trash2 className="h-4 w-4" />
                   </button>
@@ -382,6 +432,14 @@ export default function AdminUsers() {
             </form>
           </div>
         </div>
+      )}
+
+      {/* User Delete Helper Modal */}
+      {deleteHelperUser && (
+        <UserDeleteHelper
+          user={deleteHelperUser}
+          onClose={() => setDeleteHelperUser(null)}
+        />
       )}
     </div>
   );
