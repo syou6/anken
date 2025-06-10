@@ -16,8 +16,9 @@ export const leaveNotifications = {
 
     const message = `${submitter.name}さんから${leaveTypeMap[request.type]}申請が提出されました。`;
     
-    // 承認者全員に通知
+    // 承認者全員に通知（ブラウザ通知 + アプリ内通知）
     for (const approver of approvers) {
+      // ブラウザ通知
       await notificationService.send({
         title: '休暇申請通知',
         body: message,
@@ -29,6 +30,22 @@ export const leaveNotifications = {
           leaveType: request.type,
           date: request.date.toISOString()
         }
+      });
+
+      // アプリ内通知ログ
+      await notificationService.logNotification({
+        userId: approver.id,
+        type: 'in_app',
+        category: 'leave_request_submitted',
+        subject: '休暇申請通知',
+        content: message,
+        metadata: {
+          requestId: request.id,
+          submitterId: submitter.id,
+          leaveType: request.type,
+          date: request.date.toISOString()
+        },
+        status: 'sent'
       });
     }
   },
@@ -47,9 +64,11 @@ export const leaveNotifications = {
       early: '早退'
     };
 
+    const message = `${submitter.name}さんの${leaveTypeMap[request.type]}申請がグループ承認を完了しました。最終承認をお願いします。`;
+
     await notificationService.send({
       title: '休暇申請承認待ち',
-      body: `${submitter.name}さんの${leaveTypeMap[request.type]}申請がグループ承認を完了しました。最終承認をお願いします。`,
+      body: message,
       userId: president.id,
       type: 'leave_approval_required',
       data: {
@@ -58,6 +77,22 @@ export const leaveNotifications = {
         leaveType: request.type,
         date: request.date.toISOString()
       }
+    });
+
+    // アプリ内通知ログ
+    await notificationService.logNotification({
+      userId: president.id,
+      type: 'in_app',
+      category: 'leave_request_submitted',
+      subject: '休暇申請承認待ち',
+      content: message,
+      metadata: {
+        requestId: request.id,
+        submitterId: submitter.id,
+        leaveType: request.type,
+        date: request.date.toISOString()
+      },
+      status: 'sent'
     });
   },
 
@@ -78,10 +113,12 @@ export const leaveNotifications = {
     const status = approved ? '承認' : '却下';
     const title = `休暇申請${status}通知`;
 
+    const submitterMessage = `あなたの${leaveTypeMap[request.type]}申請が${status}されました。`;
+
     // 申請者への通知
     await notificationService.send({
       title,
-      body: `あなたの${leaveTypeMap[request.type]}申請が${status}されました。`,
+      body: submitterMessage,
       userId: submitter.id,
       type: approved ? 'leave_approved' : 'leave_rejected',
       data: {
@@ -90,6 +127,22 @@ export const leaveNotifications = {
         date: request.date.toISOString(),
         approved
       }
+    });
+
+    // アプリ内通知ログ
+    await notificationService.logNotification({
+      userId: submitter.id,
+      type: 'in_app',
+      category: approved ? 'leave_request_approved' : 'leave_request_rejected',
+      subject: title,
+      content: submitterMessage,
+      metadata: {
+        requestId: request.id,
+        leaveType: request.type,
+        date: request.date.toISOString(),
+        approved
+      },
+      status: 'sent'
     });
 
     if (approved) {

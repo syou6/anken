@@ -17,10 +17,9 @@ export default function NotificationBell() {
   // Load notifications on mount and when user changes
   useEffect(() => {
     if (currentUser) {
-      // 一時的に無効化：notification_logsテーブルが存在しないため
-      console.log('通知機能は一時的に無効化されています（notification_logsテーブルが存在しません）');
-      // loadNotifications();
-      // subscribeToNotifications();
+      loadNotifications();
+      const cleanup = subscribeToNotifications();
+      return cleanup;
     }
   }, [currentUser]);
 
@@ -30,22 +29,20 @@ export default function NotificationBell() {
 
     setLoading(true);
     try {
-      // 一時的に無効化
-      console.log('loadNotifications: 一時的に無効化中');
-      setNotifications([]);
-      setUnreadCount(0);
-      // const logs = await notificationService.getUserNotificationLogs(currentUser.id, 20);
-      // setNotifications(logs);
+      const logs = await notificationService.getUserNotificationLogs(currentUser.id, 20);
+      setNotifications(logs);
       
-      // // Count unread (notifications from the last 24 hours that haven't been viewed)
-      // const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
-      // const unread = logs.filter(log => 
-      //   log.status === 'sent' && 
-      //   new Date(log.createdAt) > oneDayAgo
-      // ).length;
-      // setUnreadCount(unread);
+      // Count unread (notifications from the last 24 hours that haven't been viewed)
+      const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
+      const unread = logs.filter(log => 
+        log.status === 'sent' && 
+        new Date(log.createdAt) > oneDayAgo
+      ).length;
+      setUnreadCount(unread);
     } catch (error) {
       console.error('Error loading notifications:', error);
+      setNotifications([]);
+      setUnreadCount(0);
     } finally {
       setLoading(false);
     }
@@ -53,39 +50,35 @@ export default function NotificationBell() {
 
   // Subscribe to real-time notifications
   const subscribeToNotifications = () => {
-    if (!currentUser) return;
+    if (!currentUser) return () => {};
 
-    // 一時的に無効化
-    console.log('subscribeToNotifications: 一時的に無効化中');
-    return () => {}; // 空の cleanup 関数
-
-    // const channel = supabase
-    //   .channel(`notifications:${currentUser.id}`)
-    //   .on(
-    //     'postgres_changes',
-    //     {
-    //       event: 'INSERT',
-    //       schema: 'public',
-    //       table: 'notification_logs',
-    //       filter: `user_id=eq.${currentUser.id}`
-    //     },
-    //     (payload) => {
-    //       // Add new notification to the top of the list
-    //       const newNotification = mapNotificationFromDb(payload.new);
-    //       setNotifications(prev => [newNotification, ...prev].slice(0, 20));
-    //       setUnreadCount(prev => prev + 1);
+    const channel = supabase
+      .channel(`notifications:${currentUser.id}`)
+      .on(
+        'postgres_changes',
+        {
+          event: 'INSERT',
+          schema: 'public',
+          table: 'notification_logs',
+          filter: `user_id=eq.${currentUser.id}`
+        },
+        (payload) => {
+          // Add new notification to the top of the list
+          const newNotification = mapNotificationFromDb(payload.new);
+          setNotifications(prev => [newNotification, ...prev].slice(0, 20));
+          setUnreadCount(prev => prev + 1);
           
-    //       // Show browser notification if it's a push notification
-    //       if (newNotification.type === 'push' && newNotification.status === 'sent') {
-    //         showBrowserNotification(newNotification);
-    //       }
-    //     }
-    //   )
-    //   .subscribe();
+          // Show browser notification if it's a push notification
+          if (newNotification.type === 'push' && newNotification.status === 'sent') {
+            showBrowserNotification(newNotification);
+          }
+        }
+      )
+      .subscribe();
 
-    // return () => {
-    //   supabase.removeChannel(channel);
-    // };
+    return () => {
+      supabase.removeChannel(channel);
+    };
   };
 
   // Show browser notification

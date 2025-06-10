@@ -451,8 +451,8 @@ class NotificationService {
     }
   }
 
-  // Helper methods
-  private async logNotification(log: Omit<NotificationLog, 'id' | 'createdAt'>): Promise<void> {
+  // Log notification to database
+  async logNotification(log: Omit<NotificationLog, 'id' | 'createdAt'>): Promise<void> {
     try {
       const { error } = await supabase
         .from('notification_logs')
@@ -517,6 +517,22 @@ class NotificationService {
     return typeMap[data.type] || 'schedule_created';
   }
 
+  private mapNotificationLogFromDb(data: any): NotificationLog {
+    return {
+      id: data.id,
+      userId: data.user_id,
+      type: data.type,
+      category: data.category,
+      subject: data.subject,
+      content: data.content,
+      metadata: data.metadata || {},
+      status: data.status,
+      errorMessage: data.error_message,
+      sentAt: data.sent_at ? new Date(data.sent_at) : undefined,
+      createdAt: new Date(data.created_at)
+    };
+  }
+
   private mapPreferencesFromDb(data: any): NotificationPreferences {
     return {
       id: data.id,
@@ -569,22 +585,6 @@ class NotificationService {
     if (preferences.quietHoursEnd !== undefined) dbPreferences.quiet_hours_end = preferences.quietHoursEnd;
 
     return dbPreferences;
-  }
-
-  private mapNotificationLogFromDb(data: any): NotificationLog {
-    return {
-      id: data.id,
-      userId: data.user_id,
-      type: data.type,
-      category: data.category,
-      subject: data.subject,
-      content: data.content,
-      metadata: data.metadata,
-      status: data.status,
-      errorMessage: data.error_message,
-      sentAt: data.sent_at ? new Date(data.sent_at) : undefined,
-      createdAt: new Date(data.created_at)
-    };
   }
 }
 
