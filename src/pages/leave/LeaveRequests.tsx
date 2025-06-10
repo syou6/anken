@@ -8,6 +8,7 @@ import { LeaveRequest, LeaveType, LeaveStatus, User } from '../../types';
 import { supabase } from '../../lib/supabase';
 import toast from 'react-hot-toast';
 import ParticipantSelector from '../../components/ParticipantSelector';
+import { leaveNotifications } from '../../utils/leaveNotifications';
 
 export default function LeaveRequests() {
   const { currentUser } = useAuth();
@@ -21,12 +22,14 @@ export default function LeaveRequests() {
   const [leaveApprovalGroups, setLeaveApprovalGroups] = useState<any[]>([]);
   const [additionalApprovers, setAdditionalApprovers] = useState<string[]>([]);
   const [users, setUsers] = useState<User[]>([]);
+  const [hrMembers, setHrMembers] = useState<User[]>([]);
 
   // Fetch leave requests and related data from Supabase
   useEffect(() => {
     fetchLeaveRequests();
     fetchLeaveApprovalGroups();
     fetchUsers();
+    fetchHrMembers();
   }, []);
   
   const fetchUsers = async () => {
@@ -56,6 +59,37 @@ export default function LeaveRequests() {
     } catch (error) {
       console.error('Error fetching users:', error);
       setUsers(mockUsers);
+    }
+  };
+
+  const fetchHrMembers = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('users')
+        .select('*')
+        .eq('department', '人事')
+        .order('name');
+      
+      if (error) {
+        console.error('Error fetching HR members:', error);
+        setHrMembers(mockUsers.filter(u => u.department === '人事'));
+      } else {
+        const convertedHrMembers: User[] = data?.map(u => ({
+          id: u.id,
+          employeeId: u.employee_id,
+          name: u.name,
+          nameKana: u.name_kana,
+          email: u.email,
+          phone: u.phone,
+          department: u.department,
+          role: u.role,
+          defaultWorkDays: u.default_work_days || []
+        })) || [];
+        setHrMembers(convertedHrMembers);
+      }
+    } catch (error) {
+      console.error('Error fetching HR members:', error);
+      setHrMembers(mockUsers.filter(u => u.department === '人事'));
     }
   };
   
@@ -172,6 +206,19 @@ export default function LeaveRequests() {
       return;
     }
 
+    // Check for duplicate date applications (prevent consecutive day registrations)
+    const selectedDate = new Date(formData.date);
+    const existingRequest = leaveRequests.find(request => 
+      request.userId === currentUser?.id &&
+      format(request.date, 'yyyy-MM-dd') === format(selectedDate, 'yyyy-MM-dd') &&
+      request.status !== 'rejected'
+    );
+
+    if (existingRequest) {
+      toast.error('この日付には既に申請があります。連日での申請はできません。');
+      return;
+    }
+
     try {
       // Create workflow: Group Approvers -> President -> Final Status
       const allApprovers = [
@@ -222,6 +269,20 @@ export default function LeaveRequests() {
         };
         setLeaveRequests([...leaveRequests, newRequest]);
         toast.success('休暇申請を作成しました');
+
+        // Send notification to approvers
+        if (currentUser) {
+          try {
+            await leaveNotifications.notifyLeaveRequestSubmitted(
+              newRequest,
+              currentUser,
+              approvers
+            );
+          } catch (notificationError) {
+            console.error('Failed to send notification:', notificationError);
+            // Don't fail the whole request if notification fails
+          }
+        }
       }
 
       setIsModalOpen(false);
@@ -295,14 +356,68 @@ export default function LeaveRequests() {
         });
         setLeaveRequests(updatedRequests);
         
-        if (approved) {
-          if (newStatus === 'approved') {
-            toast.success('申請が最終承認されました');
-          } else {
-            toast.success('申請を承認しました（次の承認者待ち）');
+        // Send notifications based on approval status
+        const submitter = users.find(u => u.id === request.userId);
+        if (submitter && currentUser) {
+          try {
+            // Always notify submitter of progress
+            await leaveNotifications.notifyApprovalProgress(
+              request,
+              submitter,
+              currentUser,
+              approved
+            );
+
+            // Check workflow progress for additional notifications
+            if (approved) {
+              if (step1AllApproved && step2Approvers.length > 0 && !step2AllApproved) {
+                // Group approval complete, notify president
+                await leaveNotifications.notifyGroupApprovalComplete(
+                  request,
+                  submitter,
+                  president
+                );
+                toast.success('申請を承認しました（社長承認待ち）');
+              } else if (newStatus === 'approved') {
+                // Final approval complete, notify everyone
+                const groupMembers = approvers.filter(a => step1Approvers.some(s1 => s1.userId === a.id));
+                await leaveNotifications.notifyFinalApprovalComplete(
+                  request,
+                  submitter,
+                  true,
+                  groupMembers,
+                  hrMembers
+                );
+                toast.success('申請が最終承認されました');
+              } else {
+                toast.success('申請を承認しました（次の承認者待ち）');
+              }
+            } else {
+              // Rejection - notify final rejection
+              if (newStatus === 'rejected') {
+                await leaveNotifications.notifyFinalApprovalComplete(
+                  request,
+                  submitter,
+                  false,
+                  [],
+                  []
+                );
+              }
+              toast.success('申請を却下しました');
+            }
+          } catch (notificationError) {
+            console.error('Failed to send notification:', notificationError);
+            // Don't fail the approval if notification fails
+            if (approved) {
+              if (newStatus === 'approved') {
+                toast.success('申請が最終承認されました');
+              } else {
+                toast.success('申請を承認しました');
+              }
+            } else {
+              toast.success('申請を却下しました');
+            }
           }
-        } else {
-          toast.success('申請を却下しました');
         }
       }
     } catch (err) {
