@@ -53,7 +53,11 @@ export default function ParticipantSelector({
         .order('name_kana');
 
       if (!usersError && usersData) {
-        setUsers(usersData);
+        const convertedUsers = usersData.map(u => ({
+          ...u,
+          nameKana: u.name_kana
+        }));
+        setUsers(convertedUsers);
       }
 
       // グループ一覧を取得

@@ -54,7 +54,7 @@ export default function MyCalendar() {
         console.error('Error fetching users:', error);
         // mockUsersもあいうえお順でソート
         const sortedMockUsers = [...mockUsers].sort((a, b) => 
-          (a.nameKana || a.name).localeCompare(b.nameKana || b.name, 'ja')
+          (a.nameKana || a.name).localeCompare(b.nameKana || b.name, 'ja', { sensitivity: 'base', numeric: true })
         );
         setUsers(sortedMockUsers);
       } else {
@@ -542,7 +542,9 @@ export default function MyCalendar() {
                     if (!aSelected && bSelected) return 1;
                     
                     // If both have same selection status, sort by name in Japanese alphabetical order
-                    return (a.nameKana || a.name).localeCompare(b.nameKana || b.name, 'ja');
+                    const aName = a.nameKana || a.name;
+                    const bName = b.nameKana || b.name;
+                    return aName.localeCompare(bName, 'ja', { sensitivity: 'base', numeric: true });
                   })
                   .map(user => (
                     <div key={user.id} className="flex items-center">
