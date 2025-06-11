@@ -27,7 +27,7 @@ export default function Login() {
       const { data, error } = await supabase
         .from('users')
         .select('*')
-        .order('name');
+        .order('name_kana');
       
       if (error) {
         console.error('Error fetching users:', error);

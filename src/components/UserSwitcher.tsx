@@ -22,7 +22,7 @@ export default function UserSwitcher() {
       const { data, error } = await supabase
         .from('users')
         .select('*')
-        .order('name');
+        .order('name_kana');
 
       if (error) {
         console.error('ユーザーデータ取得エラー:', error);
