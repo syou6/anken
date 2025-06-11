@@ -21,8 +21,9 @@ export default function RoomReservation() {
   } = useCalendar();
 
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const [selectedRoom, setSelectedRoom] = useState<{ id: string; type: 'room' } | null>(null);
+  const [selectedRoom, setSelectedRoom] = useState<{ id: string; name: string; type: 'room' } | null>(null);
   const [selectedDate, setSelectedDate] = useState<Date | null>(null);
+  const [editingSchedule, setEditingSchedule] = useState(null);
   const [rooms, setRooms] = useState<Room[]>([]);
   const [users, setUsers] = useState<any[]>([]);
 
@@ -146,36 +147,23 @@ export default function RoomReservation() {
     return names;
   };
 
-  const handleCellClick = (room: { id: string }, date: Date) => {
-    setSelectedRoom({ id: room.id, type: 'room' });
+  const handleCellClick = (room: { id: string; name: string }, date: Date) => {
+    setSelectedRoom({ id: room.id, name: room.name, type: 'room' });
     setSelectedDate(date);
+    setEditingSchedule(null); // Clear editing schedule for new reservation
     setIsModalOpen(true);
   };
 
   const handleReservationSubmit = async (scheduleData: any) => {
     try {
-      // Save schedule to Supabase
-      const { error } = await supabase
-        .from('schedules')
-        .insert([{
-          type: scheduleData.type,
-          title: scheduleData.title,
-          details: scheduleData.details,
-          start_time: scheduleData.startTime?.toISOString(),
-          end_time: scheduleData.endTime?.toISOString(),
-          is_all_day: scheduleData.isAllDay,
-          participants: scheduleData.participants,
-          equipment: scheduleData.equipment,
-          reminders: scheduleData.reminders,
-          meet_link: scheduleData.meetLink,
-          meeting_type: scheduleData.meetingType,
-          created_by: scheduleData.createdBy
-        }]);
-        
-      if (error) throw error;
+      // Use CalendarContext's addSchedule function for proper validation and notifications
+      const success = await addSchedule(scheduleData);
       
-      // Refresh the schedules to show new data
-      await fetchRoomSchedules();
+      if (success) {
+        // Refresh the schedules to show new data
+        await fetchRoomSchedules();
+        setIsModalOpen(false);
+      }
     } catch (error) {
       console.error('Error saving room reservation:', error);
       alert('会議室予約の保存に失敗しました');
@@ -243,7 +231,8 @@ export default function RoomReservation() {
                             key={schedule.id} 
                             className="mb-1 px-2 py-1 rounded text-xs bg-emerald-100 text-emerald-800 border-l-4 border-emerald-500 cursor-pointer hover:bg-emerald-200"
                             onClick={() => {
-                              // TODO: Open schedule edit modal
+                              setEditingSchedule(schedule);
+                              setIsModalOpen(true);
                             }}
                           >
                             <div className="font-medium">{format(schedule.startTime, 'HH:mm')}-{format(schedule.endTime, 'HH:mm')}</div>
@@ -315,7 +304,8 @@ export default function RoomReservation() {
                         <div 
                           key={schedule.id}
                           onClick={() => {
-                            // TODO: Open schedule edit modal
+                            setEditingSchedule(schedule);
+                            setIsModalOpen(true);
                           }}
                           className="text-xs px-1 py-0.5 rounded truncate cursor-pointer hover:opacity-80 bg-emerald-100 text-emerald-800"
                           title={`${room?.name}: ${schedule.title} [${getParticipantNames(schedule.participants || [])}]`}
@@ -439,6 +429,7 @@ export default function RoomReservation() {
         selectedDate={selectedDate || undefined}
         selectedEquipment={selectedRoom || undefined}
         type="room"
+        editingSchedule={editingSchedule}
       />
     </div>
   );

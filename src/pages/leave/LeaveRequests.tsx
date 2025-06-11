@@ -475,6 +475,45 @@ export default function LeaveRequests() {
     }
   };
 
+  const getDetailedApprovalStatus = (request: LeaveRequest) => {
+    if (!request.approvers || request.approvers.length === 0) {
+      return getStatusBadge(request.status);
+    }
+
+    const approvedCount = request.approvers.filter(a => a.status === 'approved').length;
+    const totalCount = request.approvers.length;
+
+    return (
+      <div className="space-y-1">
+        {getStatusBadge(request.status)}
+        <div className="text-xs text-gray-600">
+          <div className="font-medium">承認状況:</div>
+          {request.approvers.map((approver, index) => {
+            const user = users.find(u => u.id === approver.userId);
+            return (
+              <div key={index} className="flex items-center space-x-1 mt-1">
+                {approver.status === 'approved' ? (
+                  <CheckCircle className="h-3 w-3 text-green-600" />
+                ) : approver.status === 'rejected' ? (
+                  <XCircle className="h-3 w-3 text-red-600" />
+                ) : (
+                  <Clock className="h-3 w-3 text-yellow-600" />
+                )}
+                <span className="text-xs">
+                  {user ? user.name : 'Unknown'} 
+                  {approver.timestamp ? ` (${format(new Date(approver.timestamp), 'MM/dd')})` : ''}
+                </span>
+              </div>
+            );
+          })}
+          <div className="text-xs text-gray-500 mt-1">
+            {approvedCount}/{totalCount} 名承認済み
+          </div>
+        </div>
+      </div>
+    );
+  };
+
   return (
     <div className="h-full flex flex-col">
       <div className="flex justify-between items-center mb-4">
@@ -589,7 +628,7 @@ export default function LeaveRequests() {
                         <div className="text-sm text-gray-900">{request.reason}</div>
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">
-                        {getStatusBadge(request.status)}
+                        {getDetailedApprovalStatus(request)}
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                         {format(new Date(request.createdAt), 'yyyy/MM/dd')}

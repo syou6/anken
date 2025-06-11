@@ -34,6 +34,8 @@ export default function MyCalendar() {
   const [loading, setLoading] = useState(true);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingSchedule, setEditingSchedule] = useState<Schedule | null>(null);
+  const [selectedDate, setSelectedDate] = useState<Date | null>(null);
+  const [selectedParticipant, setSelectedParticipant] = useState<string | null>(null);
 
   // Load users from Supabase
   useEffect(() => {
@@ -147,6 +149,14 @@ export default function MyCalendar() {
         }
       });
     }
+  };
+
+  // Handle cell click to create new schedule with pre-filled date and participant
+  const handleCellClick = (date: Date, userId?: string) => {
+    setSelectedDate(date);
+    setSelectedParticipant(userId || null);
+    setEditingSchedule(null);
+    setIsModalOpen(true);
   };
 
   const getUserSchedulesForDay = (userId: string, date: Date) => {
@@ -328,7 +338,13 @@ export default function MyCalendar() {
                   {days.map((date, i) => {
                     const userSchedules = getUserSchedulesForDay(userId, date);
                     return (
-                      <div key={i} className="min-h-[100px] px-2 py-2 text-sm text-gray-900">
+                      <div key={i} className="min-h-[100px] px-2 py-2 text-sm text-gray-900 relative group">
+                        <button
+                          onClick={() => handleCellClick(date, userId)}
+                          className="absolute top-1 right-1 opacity-0 group-hover:opacity-100 transition-opacity duration-200 bg-blue-100 rounded-full p-1 hover:bg-blue-200"
+                        >
+                          <Plus className="h-4 w-4 text-blue-600" />
+                        </button>
                         {userSchedules.map(schedule => {
                           const hasConflict = hasConflictingSchedules(schedule, schedules);
                           return (
@@ -415,6 +431,8 @@ export default function MyCalendar() {
         <button
           onClick={() => {
             setEditingSchedule(null);
+            setSelectedDate(null);
+            setSelectedParticipant(null);
             setIsModalOpen(true);
           }}
           className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
@@ -513,22 +531,35 @@ export default function MyCalendar() {
                   <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-gray-900 mx-auto"></div>
                 </div>
               ) : (
-                users.map(user => (
-                  <div key={user.id} className="flex items-center">
-                    <input
-                      id={`user-${user.id}`}
-                      name={`user-${user.id}`}
-                      type="checkbox"
-                      className="h-4 w-4 text-blue-600 border-gray-300 rounded"
-                      checked={selectedUsers.includes(user.id)}
-                      onChange={() => toggleUser(user.id)}
-                    />
-                    <label htmlFor={`user-${user.id}`} className="ml-2 block text-sm text-gray-700">
-                      {user.name}
-                      <span className="ml-1 text-xs text-gray-500">({user.department})</span>
-                    </label>
-                  </div>
-                ))
+                // Sort users: selected users first, then unselected users, both groups sorted by Japanese alphabetical order
+                [...users]
+                  .sort((a, b) => {
+                    const aSelected = selectedUsers.includes(a.id);
+                    const bSelected = selectedUsers.includes(b.id);
+                    
+                    // If one is selected and other is not, selected comes first
+                    if (aSelected && !bSelected) return -1;
+                    if (!aSelected && bSelected) return 1;
+                    
+                    // If both have same selection status, sort by name in Japanese alphabetical order
+                    return (a.nameKana || a.name).localeCompare(b.nameKana || b.name, 'ja');
+                  })
+                  .map(user => (
+                    <div key={user.id} className="flex items-center">
+                      <input
+                        id={`user-${user.id}`}
+                        name={`user-${user.id}`}
+                        type="checkbox"
+                        className="h-4 w-4 text-blue-600 border-gray-300 rounded"
+                        checked={selectedUsers.includes(user.id)}
+                        onChange={() => toggleUser(user.id)}
+                      />
+                      <label htmlFor={`user-${user.id}`} className="ml-2 block text-sm text-gray-700">
+                        {user.name}
+                        <span className="ml-1 text-xs text-gray-500">({user.department})</span>
+                      </label>
+                    </div>
+                  ))
               )}
             </div>
           </div>
@@ -546,6 +577,8 @@ export default function MyCalendar() {
         onClose={() => {
           setIsModalOpen(false);
           setEditingSchedule(null);
+          setSelectedDate(null);
+          setSelectedParticipant(null);
         }}
         onSubmit={async (scheduleData) => {
           try {
@@ -609,7 +642,8 @@ export default function MyCalendar() {
             alert(`スケジュールの保存に失敗しました: ${error?.message || 'Unknown error'}`);
           }
         }}
-        selectedDate={currentDate}
+        selectedDate={selectedDate}
+        selectedParticipant={selectedParticipant}
         type="general"
         editingSchedule={editingSchedule}
       />

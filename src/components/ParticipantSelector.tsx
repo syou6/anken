@@ -6,6 +6,7 @@ import { useAuth } from '../contexts/AuthContext';
 interface User {
   id: string;
   name: string;
+  nameKana?: string;
   department: string;
   role: string;
 }
@@ -48,8 +49,8 @@ export default function ParticipantSelector({
       // ユーザー一覧を取得
       const { data: usersData, error: usersError } = await supabase
         .from('users')
-        .select('id, name, department, role')
-        .order('name');
+        .select('id, name, name_kana, department, role')
+        .order('name_kana');
 
       if (!usersError && usersData) {
         setUsers(usersData);
@@ -171,13 +172,15 @@ export default function ParticipantSelector({
                       <div className="flex items-center px-3 py-2 hover:bg-gray-50">
                         <button
                           onClick={() => toggleGroupExpansion(group.id)}
-                          className="flex items-center flex-1 text-left"
+                          className="flex items-center mr-2 text-gray-400 hover:text-gray-600"
                         >
                           {isExpanded ? (
-                            <ChevronDown className="h-4 w-4 text-gray-400 mr-2" />
+                            <ChevronDown className="h-4 w-4" />
                           ) : (
-                            <ChevronRight className="h-4 w-4 text-gray-400 mr-2" />
+                            <ChevronRight className="h-4 w-4" />
                           )}
+                        </button>
+                        <label className="flex items-center flex-1 cursor-pointer">
                           <input
                             type="checkbox"
                             checked={isFullySelected}
@@ -187,7 +190,7 @@ export default function ParticipantSelector({
                           />
                           <span className="text-sm text-gray-900">{group.name}</span>
                           <span className="ml-2 text-xs text-gray-500">({groupUsers.length}名)</span>
-                        </button>
+                        </label>
                       </div>
                       
                       {isExpanded && (
@@ -205,19 +208,22 @@ export default function ParticipantSelector({
                             </label>
                           </div>
                           <div className="space-y-1">
-                            {groupUsers.map(user => (
-                              <label key={user.id} className="flex items-center">
-                                <input
-                                  type="checkbox"
-                                  checked={selectedParticipants.includes(user.id)}
-                                  onChange={() => handleUserToggle(user.id)}
-                                  disabled={isReadOnly}
-                                  className="mr-2 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500 disabled:opacity-50"
-                                />
-                                <span className="text-sm text-gray-700">{user.name}</span>
-                                <span className="ml-1 text-xs text-gray-500">({user.department})</span>
-                              </label>
-                            ))}
+                            {groupUsers
+                              .sort((a, b) => (a.nameKana || a.name).localeCompare(b.nameKana || b.name, 'ja'))
+                              .map(user => (
+                                <label key={user.id} className="flex items-center">
+                                  <input
+                                    type="checkbox"
+                                    checked={selectedParticipants.includes(user.id)}
+                                    onChange={() => handleUserToggle(user.id)}
+                                    disabled={isReadOnly}
+                                    className="mr-2 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500 disabled:opacity-50"
+                                  />
+                                  <span className="text-sm text-gray-700">{user.name}</span>
+                                  <span className="ml-1 text-xs text-gray-500">({user.department})</span>
+                                </label>
+                              ))
+                            }
                           </div>
                         </div>
                       )}
@@ -242,20 +248,23 @@ export default function ParticipantSelector({
               </div>
             ) : (
               <div className="space-y-2">
-                {getSelectedUsers().map(user => (
-                  <div key={user.id} className="flex items-center justify-between p-2 bg-gray-50 rounded">
-                    <div>
-                      <span className="text-sm font-medium text-gray-900">{user.name}</span>
-                      <span className="ml-2 text-xs text-gray-500">({user.department})</span>
+                {getSelectedUsers()
+                  .sort((a, b) => (a.nameKana || a.name).localeCompare(b.nameKana || b.name, 'ja'))
+                  .map(user => (
+                    <div key={user.id} className="flex items-center justify-between p-2 bg-gray-50 rounded">
+                      <div>
+                        <span className="text-sm font-medium text-gray-900">{user.name}</span>
+                        <span className="ml-2 text-xs text-gray-500">({user.department})</span>
+                      </div>
+                      <button
+                        onClick={() => handleUserToggle(user.id)}
+                        className="text-red-600 hover:text-red-800 text-xs"
+                      >
+                        削除
+                      </button>
                     </div>
-                    <button
-                      onClick={() => handleUserToggle(user.id)}
-                      className="text-red-600 hover:text-red-800 text-xs"
-                    >
-                      削除
-                    </button>
-                  </div>
-                ))}
+                  ))
+                }
               </div>
             )}
           </div>

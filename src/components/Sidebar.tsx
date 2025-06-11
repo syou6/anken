@@ -3,6 +3,8 @@ import { Calendar, Car, DoorOpen, Clock, Users, Settings, Building2, Box, Bell, 
 import { useAuth } from '../contexts/AuthContext';
 import { usePermissions } from '../hooks/usePermissions';
 import PermissionGate from './PermissionGate';
+import { useState, useEffect } from 'react';
+import { supabase } from '../lib/supabase';
 
 interface SidebarProps {
   onClose?: () => void;
@@ -20,13 +22,48 @@ export default function Sidebar({ onClose }: SidebarProps) {
     isAdminOrAbove 
   } = usePermissions();
 
+  const [pendingLeaveRequestsCount, setPendingLeaveRequestsCount] = useState(0);
+
+  // Fetch pending leave requests count
+  useEffect(() => {
+    if (currentUser && canReadLeaveRequests()) {
+      fetchPendingLeaveRequestsCount();
+    }
+  }, [currentUser, canReadLeaveRequests]);
+
+  const fetchPendingLeaveRequestsCount = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('leave_requests')
+        .select('id, approvers')
+        .eq('status', 'pending');
+
+      if (error) {
+        console.error('Error fetching pending leave requests:', error);
+        return;
+      }
+
+      // Count requests that need current user's approval
+      const needsApproval = data?.filter(request => {
+        if (!request.approvers || !Array.isArray(request.approvers)) return false;
+        return request.approvers.some((approver: any) => 
+          approver.userId === currentUser?.id && approver.status === 'pending'
+        );
+      });
+
+      setPendingLeaveRequestsCount(needsApproval?.length || 0);
+    } catch (error) {
+      console.error('Error fetching pending leave requests count:', error);
+    }
+  };
+
   const navigation = [
     { name: 'ダッシュボード', href: '/', icon: <Building2 className="h-6 w-6" />, show: true },
     { name: 'カレンダー', href: '/calendar/my', icon: <Calendar className="h-6 w-6" />, show: canReadSchedules() },
     { name: '車両予約', href: '/calendar/vehicle', icon: <Car className="h-6 w-6" />, show: canWriteSchedules() },
     { name: '会議室予約', href: '/calendar/room', icon: <DoorOpen className="h-6 w-6" />, show: canWriteSchedules() },
     { name: 'サンプル予約', href: '/calendar/sample', icon: <Box className="h-6 w-6" />, show: canWriteSchedules() },
-    { name: '休暇申請', href: '/leave', icon: <Clock className="h-6 w-6" />, show: canReadLeaveRequests() },
+    { name: '休暇申請', href: '/leave', icon: <Clock className="h-6 w-6" />, show: canReadLeaveRequests(), badge: pendingLeaveRequestsCount },
     { name: '通知設定', href: '/settings/notifications', icon: <Bell className="h-6 w-6" />, show: true },
   ];
 
@@ -68,7 +105,12 @@ export default function Sidebar({ onClose }: SidebarProps) {
                 <div className={`mr-3 ${isActive ? 'text-blue-500' : 'text-gray-400 group-hover:text-gray-500'}`}>
                   {item.icon}
                 </div>
-                {item.name}
+                <span className="flex-1">{item.name}</span>
+                {item.badge && item.badge > 0 && (
+                  <span className="ml-2 bg-red-500 text-white text-xs font-medium px-2 py-0.5 rounded-full">
+                    {item.badge}
+                  </span>
+                )}
               </Link>
             );
           })}

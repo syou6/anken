@@ -54,8 +54,6 @@ export default function UserSwitcher() {
       console.log('ユーザー切り替え:', user.name);
       switchUser(user);
       setIsModalOpen(false);
-      // ページをリロードしてユーザー依存のデータを更新
-      window.location.reload();
     } catch (error) {
       console.error('Failed to switch user:', error);
     } finally {

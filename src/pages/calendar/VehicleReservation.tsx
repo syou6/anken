@@ -22,8 +22,9 @@ export default function VehicleReservation() {
   } = useCalendar();
 
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const [selectedVehicle, setSelectedVehicle] = useState<{ id: string; type: 'vehicle' } | null>(null);
+  const [selectedVehicle, setSelectedVehicle] = useState<{ id: string; name: string; type: 'vehicle' } | null>(null);
   const [selectedDate, setSelectedDate] = useState<Date | null>(null);
+  const [editingSchedule, setEditingSchedule] = useState(null);
   const [vehicles, setVehicles] = useState<Vehicle[]>([]);
   const [users, setUsers] = useState<any[]>([]);
 
@@ -154,37 +155,24 @@ export default function VehicleReservation() {
     return names;
   };
 
-  const handleCellClick = (vehicle: { id: string }, date: Date) => {
-    setSelectedVehicle({ id: vehicle.id, type: 'vehicle' });
+  const handleCellClick = (vehicle: { id: string; name: string }, date: Date) => {
+    setSelectedVehicle({ id: vehicle.id, name: vehicle.name, type: 'vehicle' });
     setSelectedDate(date);
+    setEditingSchedule(null); // Clear editing schedule for new reservations
     setIsModalOpen(true);
   };
 
   const handleReservationSubmit = async (scheduleData: any) => {
     try {
-      // Save schedule to Supabase
-      const { error } = await supabase
-        .from('schedules')
-        .insert([{
-          type: scheduleData.type,
-          title: scheduleData.title,
-          details: scheduleData.details,
-          start_time: scheduleData.startTime?.toISOString(),
-          end_time: scheduleData.endTime?.toISOString(),
-          is_all_day: scheduleData.isAllDay,
-          participants: scheduleData.participants,
-          equipment: scheduleData.equipment,
-          reminders: scheduleData.reminders,
-          meet_link: scheduleData.meetLink,
-          meeting_type: scheduleData.meetingType,
-          created_by: scheduleData.createdBy
-        }]);
-        
-      if (error) throw error;
+      // Use CalendarContext's addSchedule function for proper validation and notifications
+      const success = await addSchedule(scheduleData);
       
-      // Refresh the schedules to show new data
-      await refreshSchedules();
-      await fetchVehicleSchedules();
+      if (success) {
+        // Refresh the schedules to show new data
+        await refreshSchedules();
+        await fetchVehicleSchedules();
+        setIsModalOpen(false);
+      }
     } catch (error) {
       console.error('Error saving vehicle reservation:', error);
       alert('車両予約の保存に失敗しました');
@@ -253,7 +241,8 @@ export default function VehicleReservation() {
                             key={schedule.id} 
                             className="mb-1 px-2 py-1 rounded text-xs bg-amber-100 text-amber-800 border-l-4 border-amber-500 cursor-pointer hover:bg-amber-200"
                             onClick={() => {
-                              // TODO: Open schedule edit modal
+                              setEditingSchedule(schedule);
+                              setIsModalOpen(true);
                             }}
                           >
                             <div className="font-medium">{format(schedule.startTime, 'HH:mm')}-{format(schedule.endTime, 'HH:mm')}</div>
@@ -325,7 +314,8 @@ export default function VehicleReservation() {
                         <div 
                           key={schedule.id}
                           onClick={() => {
-                            // TODO: Open schedule edit modal
+                            setEditingSchedule(schedule);
+                            setIsModalOpen(true);
                           }}
                           className="text-xs px-1 py-0.5 rounded truncate cursor-pointer hover:opacity-80 bg-amber-100 text-amber-800"
                           title={`${vehicle?.name}: ${schedule.title} [${getParticipantNames(schedule.participants || [])}]`}
@@ -363,6 +353,7 @@ export default function VehicleReservation() {
           onClick={() => {
             setSelectedVehicle(null);
             setSelectedDate(null);
+            setEditingSchedule(null); // Clear editing schedule for new reservations
             setIsModalOpen(true);
           }}
           className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-amber-600 hover:bg-amber-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-amber-500"
@@ -449,6 +440,7 @@ export default function VehicleReservation() {
         selectedDate={selectedDate || undefined}
         selectedEquipment={selectedVehicle || undefined}
         type="vehicle"
+        editingSchedule={editingSchedule}
       />
     </div>
   );

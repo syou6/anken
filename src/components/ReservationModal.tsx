@@ -25,6 +25,7 @@ interface ReservationModalProps {
   onSubmit: (schedule: Partial<Schedule>) => void;
   selectedDate?: Date;
   selectedEquipment?: Equipment;
+  selectedParticipant?: string;
   type: 'room' | 'vehicle' | 'sample' | 'general';
   editingSchedule?: Schedule;
 }
@@ -35,6 +36,7 @@ export default function ReservationModal({
   onSubmit,
   selectedDate,
   selectedEquipment,
+  selectedParticipant,
   type,
   editingSchedule
 }: ReservationModalProps) {
@@ -64,8 +66,8 @@ export default function ReservationModal({
       startTime,
       endTime,
       isAllDay: false,
-      participants: currentUser ? [currentUser.id] : [],
-      equipment: selectedEquipment ? [{ id: selectedEquipment.id, name: selectedEquipment.name, type: selectedEquipment.type }] : [],
+      participants: selectedParticipant ? [selectedParticipant] : (currentUser ? [currentUser.id] : []),
+      equipment: selectedEquipment ? [{ id: selectedEquipment.id, name: selectedEquipment.name || '', type: selectedEquipment.type }] : [],
       reminders: [{ time: 15, methods: ['email'] }],
       recurrence: null,
       meetingType: defaultMeetingType,
