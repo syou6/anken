@@ -29,15 +29,15 @@ export default function NotificationBell() {
 
     setLoading(true);
     try {
-      const logs = await notificationService.getUserNotificationLogs(currentUser.id, 20);
+      console.log(`=== 通知読み込み開始: ${currentUser.name} (${currentUser.id}) ===`);
+      const logs = await notificationService.getUserNotificationLogs(currentUser.id, 50);
+      console.log('取得した通知数:', logs.length);
+      console.log('通知データ:', logs);
       setNotifications(logs);
       
-      // Count unread (notifications from the last 24 hours that haven't been viewed)
-      const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
-      const unread = logs.filter(log => 
-        log.status === 'sent' && 
-        new Date(log.createdAt) > oneDayAgo
-      ).length;
+      // Count unread notifications
+      const unread = logs.filter(log => !log.isRead).length;
+      console.log('未読通知数:', unread);
       setUnreadCount(unread);
     } catch (error) {
       console.error('Error loading notifications:', error);
@@ -100,7 +100,19 @@ export default function NotificationBell() {
   };
 
   // Handle notification click
-  const handleNotificationClick = (notification: NotificationLog) => {
+  const handleNotificationClick = async (notification: NotificationLog) => {
+    // Mark as read if not already
+    if (!notification.isRead) {
+      const success = await notificationService.markNotificationAsRead(notification.id);
+      if (success) {
+        // Update local state
+        setNotifications(prev => 
+          prev.map(n => n.id === notification.id ? { ...n, isRead: true, readAt: new Date() } : n)
+        );
+        setUnreadCount(prev => Math.max(0, prev - 1));
+      }
+    }
+    
     const metadata = notification.metadata;
     
     switch (notification.category) {
@@ -158,6 +170,28 @@ export default function NotificationBell() {
     }
   };
 
+  // Get notification title based on category
+  const getNotificationTitle = (notification: NotificationLog): string => {
+    switch (notification.category) {
+      case 'schedule_created':
+        return '新しいスケジュールが追加されました';
+      case 'schedule_updated':
+        return 'スケジュールが更新されました';
+      case 'schedule_deleted':
+        return 'スケジュールが削除されました';
+      case 'schedule_reminder':
+        return 'スケジュールのリマインダー';
+      case 'leave_request_submitted':
+        return '休暇申請が提出されました';
+      case 'leave_request_approved':
+        return '休暇申請が承認されました';
+      case 'leave_request_rejected':
+        return '休暇申請が却下されました';
+      default:
+        return 'お知らせ';
+    }
+  };
+
   // Format notification time
   const formatNotificationTime = (date: Date) => {
     const now = new Date();
@@ -187,13 +221,23 @@ export default function NotificationBell() {
       status: data.status,
       errorMessage: data.error_message,
       sentAt: data.sent_at ? new Date(data.sent_at) : undefined,
-      createdAt: new Date(data.created_at)
+      createdAt: new Date(data.created_at),
+      isRead: data.is_read || false,
+      readAt: data.read_at ? new Date(data.read_at) : undefined
     };
   };
 
   // Mark all as read
-  const markAllAsRead = () => {
-    setUnreadCount(0);
+  const markAllAsRead = async () => {
+    if (!currentUser) return;
+    
+    const success = await notificationService.markAllNotificationsAsRead(currentUser.id);
+    if (success) {
+      setNotifications(prev => 
+        prev.map(n => ({ ...n, isRead: true, readAt: new Date() }))
+      );
+      setUnreadCount(0);
+    }
   };
 
   return (
@@ -259,19 +303,30 @@ export default function NotificationBell() {
                   {notifications.map((notification) => (
                     <div
                       key={notification.id}
-                      className="p-4 hover:bg-gray-50 cursor-pointer transition-colors"
+                      className={`p-4 hover:bg-gray-50 cursor-pointer transition-colors relative ${
+                        !notification.isRead ? 'bg-blue-50' : ''
+                      }`}
                       onClick={() => handleNotificationClick(notification)}
                     >
+                      {!notification.isRead && (
+                        <div className="absolute left-1 top-1/2 transform -translate-y-1/2 w-2 h-2 bg-blue-600 rounded-full"></div>
+                      )}
                       <div className="flex items-start">
-                        <div className={`flex-shrink-0 ${getStatusColor(notification.status)}`}>
+                        <div className={`flex-shrink-0 ${getStatusColor(notification.status)} ${
+                          !notification.isRead ? '' : 'opacity-60'
+                        }`}>
                           {getNotificationIcon(notification.category)}
                         </div>
                         <div className="ml-3 flex-1">
-                          <p className="text-sm font-medium text-gray-900">
-                            {notification.subject}
+                          <p className={`text-sm font-medium ${
+                            !notification.isRead ? 'text-gray-900' : 'text-gray-700'
+                          }`}>
+                            {notification.subject || getNotificationTitle(notification)}
                           </p>
                           {notification.content && (
-                            <p className="mt-1 text-sm text-gray-600 line-clamp-2">
+                            <p className={`mt-1 text-sm line-clamp-2 ${
+                              !notification.isRead ? 'text-gray-700' : 'text-gray-600'
+                            }`}>
                               {notification.content}
                             </p>
                           )}

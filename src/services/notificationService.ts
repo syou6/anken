@@ -253,8 +253,38 @@ class NotificationService {
 
   // Send schedule created notification
   async notifyScheduleCreated(data: ScheduleNotificationData): Promise<void> {
+    console.log(`=== notifyScheduleCreated開始: ${data.user.name} ===`);
+    
+    // Always save notification log (for in-app notifications)
+    const notificationSubject = `${data.schedule.title}`;
+    const notificationContent = `${this.formatDateTime(data.schedule.startTime)} - ${this.formatDateTime(data.schedule.endTime)}${data.schedule.location ? `\n場所: ${data.schedule.location}` : ''}`;
+    
+    await this.logNotification({
+      userId: data.user.id,
+      type: 'email',
+      category: 'schedule_created',
+      subject: notificationSubject,
+      content: notificationContent,
+      metadata: { 
+        scheduleId: data.schedule.id,
+        scheduleTitle: data.schedule.title,
+        scheduleType: data.schedule.type,
+        startTime: data.schedule.startTime,
+        endTime: data.schedule.endTime
+      },
+      status: 'sent',
+      sentAt: new Date(),
+      isRead: false
+    });
+    console.log('通知ログ保存完了');
+    
+    // Check preferences for email/push notifications
     const preferences = await this.getUserPreferences(data.user.id);
-    if (!preferences) return;
+    console.log('ユーザー通知設定:', preferences);
+    if (!preferences) {
+      console.log('通知設定なし、アプリ内通知のみ');
+      return;
+    }
 
     // Check if user wants email notifications for schedule creation
     if (preferences.emailEnabled && preferences.emailScheduleCreated) {
@@ -451,10 +481,60 @@ class NotificationService {
     }
   }
 
+  // Mark notification as read
+  async markNotificationAsRead(notificationId: string): Promise<boolean> {
+    try {
+      const { error } = await supabase
+        .from('notification_logs')
+        .update({
+          is_read: true,
+          read_at: new Date().toISOString()
+        })
+        .eq('id', notificationId);
+
+      if (error) {
+        console.error('Error marking notification as read:', error);
+        return false;
+      }
+
+      return true;
+    } catch (error) {
+      console.error('Error in markNotificationAsRead:', error);
+      return false;
+    }
+  }
+
+  // Mark all notifications as read for a user
+  async markAllNotificationsAsRead(userId: string): Promise<boolean> {
+    try {
+      const { error } = await supabase
+        .from('notification_logs')
+        .update({
+          is_read: true,
+          read_at: new Date().toISOString()
+        })
+        .eq('user_id', userId)
+        .eq('is_read', false);
+
+      if (error) {
+        console.error('Error marking all notifications as read:', error);
+        return false;
+      }
+
+      return true;
+    } catch (error) {
+      console.error('Error in markAllNotificationsAsRead:', error);
+      return false;
+    }
+  }
+
   // Log notification to database
   async logNotification(log: Omit<NotificationLog, 'id' | 'createdAt'>): Promise<void> {
     try {
-      const { error } = await supabase
+      console.log('=== 通知ログ保存開始 ===');
+      console.log('ログデータ:', log);
+      
+      const { data, error } = await supabase
         .from('notification_logs')
         .insert({
           user_id: log.userId,
@@ -466,10 +546,14 @@ class NotificationService {
           status: log.status,
           error_message: log.errorMessage,
           sent_at: log.sentAt
-        });
+        })
+        .select();
 
       if (error) {
-        console.error('Error logging notification:', error);
+        console.error('通知ログ保存エラー:', error);
+        console.error('エラー詳細:', error.details, error.hint, error.message);
+      } else {
+        console.log('通知ログ保存成功:', data);
       }
     } catch (error) {
       console.error('Error in logNotification:', error);
@@ -529,7 +613,9 @@ class NotificationService {
       status: data.status,
       errorMessage: data.error_message,
       sentAt: data.sent_at ? new Date(data.sent_at) : undefined,
-      createdAt: new Date(data.created_at)
+      createdAt: new Date(data.created_at),
+      isRead: data.is_read || false,
+      readAt: data.read_at ? new Date(data.read_at) : undefined
     };
   }
 

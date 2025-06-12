@@ -70,6 +70,8 @@ export interface NotificationLog {
   errorMessage?: string;
   sentAt?: Date;
   createdAt: Date;
+  isRead?: boolean;
+  readAt?: Date;
 }
 
 // Scheduled notification

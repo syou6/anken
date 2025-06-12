@@ -301,37 +301,54 @@ export function CalendarProvider({ children }: { children: ReactNode }) {
 
       // Send notifications to all participants
       try {
+        console.log('=== 通知送信開始 ===');
+        console.log('参加者:', newSchedule.participants);
+        
         const participantPromises = newSchedule.participants.map(async (participantId) => {
+          console.log(`参加者 ${participantId} への通知処理開始`);
+          
           // Get participant details
-          const { data: userData } = await supabase
+          const { data: userData, error: userError } = await supabase
             .from('users')
             .select('id, name, email')
             .eq('id', participantId)
             .single();
 
+          if (userError) {
+            console.error(`ユーザーデータ取得エラー (${participantId}):`, userError);
+            return;
+          }
+
           if (userData) {
-            await notificationService.notifyScheduleCreated({
-              schedule: {
-                id: newSchedule.id,
-                title: newSchedule.title,
-                type: newSchedule.type,
-                startTime: newSchedule.startTime,
-                endTime: newSchedule.endTime,
-                details: newSchedule.details,
-                meetLink: newSchedule.meetLink,
-                participants: newSchedule.participants,
-                location: getLocationFromEquipment(newSchedule.equipment)
-              },
-              user: {
-                id: userData.id,
-                name: userData.name,
-                email: userData.email
-              }
-            });
+            console.log(`ユーザーデータ取得成功:`, userData);
+            try {
+              await notificationService.notifyScheduleCreated({
+                schedule: {
+                  id: newSchedule.id,
+                  title: newSchedule.title,
+                  type: newSchedule.type,
+                  startTime: newSchedule.startTime,
+                  endTime: newSchedule.endTime,
+                  details: newSchedule.details,
+                  meetLink: newSchedule.meetLink,
+                  participants: newSchedule.participants,
+                  location: getLocationFromEquipment(newSchedule.equipment)
+                },
+                user: {
+                  id: userData.id,
+                  name: userData.name,
+                  email: userData.email
+                }
+              });
+              console.log(`通知送信完了: ${userData.name}`);
+            } catch (notifError) {
+              console.error(`通知送信エラー (${userData.name}):`, notifError);
+            }
           }
         });
 
         await Promise.all(participantPromises);
+        console.log('=== 通知送信完了 ===');
       } catch (error) {
         console.error('Notification error:', error);
       }
