@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { Bell, X, Check, AlertCircle, Calendar, Users, Mail } from 'lucide-react';
 import { format } from 'date-fns';
 import { ja } from 'date-fns/locale';
+import { useNavigate } from 'react-router-dom';
 import { notificationService } from '../services/notificationService';
 import { useAuth } from '../contexts/AuthContext';
 import { NotificationLog, NotificationCategory } from '../types';
@@ -9,6 +10,7 @@ import { supabase } from '../lib/supabase';
 
 export default function NotificationBell() {
   const { currentUser } = useAuth();
+  const navigate = useNavigate();
   const [isOpen, setIsOpen] = useState(false);
   const [notifications, setNotifications] = useState<NotificationLog[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
@@ -119,22 +121,22 @@ export default function NotificationBell() {
       case 'schedule_created':
       case 'schedule_updated':
       case 'schedule_reminder':
-        if (metadata?.scheduleId) {
-          window.location.href = `/calendar?scheduleId=${metadata.scheduleId}`;
-        }
+        setIsOpen(false);
+        // Navigate to MyCalendar page
+        navigate('/calendar/my');
         break;
       
       case 'leave_request_submitted':
       case 'leave_request_approved':
       case 'leave_request_rejected':
-        window.location.href = '/leave-requests';
+        setIsOpen(false);
+        navigate('/leave/requests');
         break;
       
       default:
-        window.location.href = '/dashboard';
+        setIsOpen(false);
+        navigate('/');
     }
-    
-    setIsOpen(false);
   };
 
   // Get icon for notification category
