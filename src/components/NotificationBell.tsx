@@ -130,7 +130,7 @@ export default function NotificationBell() {
       case 'leave_request_approved':
       case 'leave_request_rejected':
         setIsOpen(false);
-        navigate('/leave/requests');
+        navigate('/leave');
         break;
       
       default:
