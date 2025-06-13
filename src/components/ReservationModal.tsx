@@ -88,15 +88,16 @@ export default function ReservationModal({
     if (isOpen) {
       loadEquipment();
       if (editingSchedule) {
-        setFormData(getInitialFormData());
+        setFormData(editingSchedule);
         loadUserInfo();
       } else {
-        // 新規作成時は作成者・編集者情報をクリア
+        // 新規作成時は初期データを設定
+        setFormData(getInitialFormData());
         setCreatorUser(null);
         setUpdaterUser(null);
       }
     }
-  }, [isOpen, editingSchedule]);
+  }, [isOpen, editingSchedule, selectedDate, selectedEquipment, selectedParticipant]);
   
   const loadEquipment = async () => {
     try {

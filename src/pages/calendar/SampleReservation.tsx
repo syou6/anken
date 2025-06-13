@@ -4,7 +4,7 @@ import { ja } from 'date-fns/locale';
 import { ChevronLeft, ChevronRight, Plus, Box, ArrowDownUp, X, ArrowUp, ArrowDown, FileSpreadsheet } from 'lucide-react';
 import { useCalendar } from '../../contexts/CalendarContext';
 import { mockSampleEquipment } from '../../data/mockData';
-import { SampleEquipment } from '../../types';
+import { Schedule, SampleEquipment } from '../../types';
 import { supabase } from '../../lib/supabase';
 import ReservationModal from '../../components/ReservationModal';
 import * as XLSX from 'xlsx';
@@ -23,8 +23,9 @@ export default function SampleReservation() {
   } = useCalendar();
 
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const [selectedEquipment, setSelectedEquipment] = useState<{ id: string; type: 'sample' } | null>(null);
+  const [selectedEquipment, setSelectedEquipment] = useState<{ id: string; name?: string; type: 'sample' } | null>(null);
   const [selectedDate, setSelectedDate] = useState<Date | null>(null);
+  const [editingSchedule, setEditingSchedule] = useState<Schedule | null>(null);
   const [sampleEquipment, setSampleEquipment] = useState<SampleEquipment[]>([]);
   const [isOrderModalOpen, setIsOrderModalOpen] = useState(false);
   const [selectedDateForOrder, setSelectedDateForOrder] = useState<Date | null>(null);
@@ -120,11 +121,6 @@ export default function SampleReservation() {
       }));
   };
 
-  const handleCellClick = (equipment: { id: string }, date: Date) => {
-    setSelectedEquipment({ id: equipment.id, type: 'sample' });
-    setSelectedDate(date);
-    setIsModalOpen(true);
-  };
 
   const handleReservationSubmit = async (scheduleData: any) => {
     try {
@@ -302,6 +298,14 @@ export default function SampleReservation() {
   };
 
   // Export to Excel function
+  // Handle cell click to create new sample reservation with pre-filled date and equipment
+  const handleCellClick = (equipment: { id: string; name: string; type: string }, date: Date) => {
+    setSelectedEquipment({ id: equipment.id, name: equipment.name, type: equipment.type });
+    setSelectedDate(date);
+    setEditingSchedule(null);
+    setIsModalOpen(true);
+  };
+
   const exportToExcel = () => {
     try {
       // Prepare data for export
@@ -637,11 +641,17 @@ export default function SampleReservation() {
 
       <ReservationModal
         isOpen={isModalOpen}
-        onClose={() => setIsModalOpen(false)}
+        onClose={() => {
+          setIsModalOpen(false);
+          setEditingSchedule(null);
+          setSelectedDate(null);
+          setSelectedEquipment(null);
+        }}
         onSubmit={handleReservationSubmit}
         selectedDate={selectedDate || undefined}
         selectedEquipment={selectedEquipment || undefined}
         type="sample"
+        editingSchedule={editingSchedule}
       />
 
       <SortOrderModal
