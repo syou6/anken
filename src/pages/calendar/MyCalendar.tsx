@@ -456,7 +456,7 @@ export default function MyCalendar() {
                   type="button"
                   onClick={() => setView('day')}
                   className={`relative inline-flex items-center px-4 py-2 rounded-l-md border border-gray-300 bg-white text-sm font-medium ${
-                    view === 'day' ? 'text-blue-600 z-10 bg-blue-50' : 'text-gray-700 hover:bg-gray-50'
+                    view === 'day' ? 'text-blue-600 bg-blue-50' : 'text-gray-700 hover:bg-gray-50'
                   }`}
                 >
                   日
@@ -465,7 +465,7 @@ export default function MyCalendar() {
                   type="button"
                   onClick={() => setView('week')}
                   className={`relative inline-flex items-center px-4 py-2 border-t border-b border-gray-300 bg-white text-sm font-medium ${
-                    view === 'week' ? 'text-blue-600 z-10 bg-blue-50' : 'text-gray-700 hover:bg-gray-50'
+                    view === 'week' ? 'text-blue-600 bg-blue-50' : 'text-gray-700 hover:bg-gray-50'
                   }`}
                 >
                   週
@@ -474,7 +474,7 @@ export default function MyCalendar() {
                   type="button"
                   onClick={() => setView('month')}
                   className={`relative inline-flex items-center px-4 py-2 rounded-r-md border border-gray-300 bg-white text-sm font-medium ${
-                    view === 'month' ? 'text-blue-600 z-10 bg-blue-50' : 'text-gray-700 hover:bg-gray-50'
+                    view === 'month' ? 'text-blue-600 bg-blue-50' : 'text-gray-700 hover:bg-gray-50'
                   }`}
                 >
                   月
